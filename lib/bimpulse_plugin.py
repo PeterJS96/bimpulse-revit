@@ -53,9 +53,10 @@ def colour(hex_colour, theme):
     return LIGHT.get(hex_colour.upper(), hex_colour)
 
 
-def themed_xaml(text, theme, styles=""):
-    """The window's XAML in the theme, with the shared styles put in for <!--BIMPULSE:STYLES-->."""
-    text = text.replace("<!--BIMPULSE:STYLES-->", styles)
+def themed_xaml(text, theme, styles="", logo=""):
+    """The window's XAML in the theme, with the shared styles put in for <!--BIMPULSE:STYLES-->
+    and the BIMPulse mark's file for BIMPULSE:LOGO."""
+    text = text.replace("<!--BIMPULSE:STYLES-->", styles).replace("BIMPULSE:LOGO", logo)
     if theme != "light":
         return text
     return _HEX6.sub(lambda m: colour("#" + m.group(1), theme), text)
@@ -133,3 +134,16 @@ TOUR = [
     ("btnMenu", "Make it yours",
      "Light or dark, dock it beside the model, error reports, and this tour again, all from this menu."),
 ]
+
+
+def swap_map(old, new):
+    """{colour: colour} to repaint something drawn in the `old` theme in the `new` one."""
+    if old == new:
+        return {}
+    if new == "light":
+        return dict(LIGHT)
+    back = {}
+    for dark, light in LIGHT.items():
+        back.setdefault(light, dark)
+    back["#FFFFFF"] = "#0B1626"  # white was cards (and text on blue): back to cards
+    return back

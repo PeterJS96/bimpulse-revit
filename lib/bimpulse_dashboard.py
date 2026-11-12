@@ -27,12 +27,12 @@ from System.IO import MemoryStream
 from System.Windows import (Clipboard, CornerRadius, FontWeights, GridLength, GridUnitType, HorizontalAlignment, Point,
                             Rect, Size, SystemParameters, TextTrimming, TextWrapping, Thickness, VerticalAlignment,
                             Visibility, WindowState)
-from System.Windows.Controls import (Border, Button, CheckBox, ColumnDefinition, ContextMenu, Grid, Image, ListBoxItem,
-                                     MenuItem, Orientation, Separator, StackPanel, TextBlock, TextBox)
+from System.Windows.Controls import (Border, Button, CheckBox, ColumnDefinition, ComboBox, ContextMenu, Grid, Image,
+                                     ListBoxItem, MenuItem, Orientation, Separator, StackPanel, TextBlock, TextBox)
 from System.Windows.Controls.Primitives import PlacementMode
 from System.Windows.Input import Cursors, Key, Keyboard, ModifierKeys
 from System.Windows.Media import (BrushConverter, CombinedGeometry, FontFamily, GeometryCombineMode,
-                                  RectangleGeometry)
+                                  RectangleGeometry, SolidColorBrush, VisualTreeHelper)
 from System.Windows.Media.Imaging import BitmapCacheOption, BitmapImage
 from System.Windows.Threading import DispatcherTimer
 
@@ -41,6 +41,7 @@ from pyrevit import HOST_APP, forms
 
 import bimpulse_bcf as bcf
 import bimpulse_cloud as cloud
+import bimpulse_markup as markup
 import bimpulse_plugin as plug
 import bimpulse_revit as rv
 
@@ -50,6 +51,11 @@ UI_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bimpulse_ui")
 PANEL_ID = "6f3c2a91-4b7e-4f0d-9c55-2e8a7d1b3c40"
 REQUEST_SECONDS = 6  # how often BIMPulse is asked for "Open in Revit" requests
 THEME = {"name": "dark"}  # the theme the open dashboards were drawn in
+# Single-key shortcuts (not while typing): key, button, what it does.
+SHORTCUTS = (("Z", "btnZoom", "Select and zoom"), ("D", "btn3D", "Show in 3D"), ("S", "btnSelect", "Select only"),
+             ("X", "btnIsolate", "Isolate"), ("R", "btnResolve", "Mark resolved"), ("I", "btnIgnore", "Ignore"),
+             ("O", "btnReopen", "Reopen"), ("C", "btnColour", "Colour issues in the view"),
+             ("B", "btnBrowse", "Browse BIMPulse"))
 
 
 def _code_stamp():
@@ -134,7 +140,7 @@ def themed_xaml(name, theme):
         os.makedirs(UI_CACHE)
     path = os.path.join(UI_CACHE, "{}-{}.xaml".format(os.path.splitext(name)[0], theme))
     with io.open(path, "w", encoding="utf-8") as f:
-        f.write(plug.themed_xaml(text, theme, styles))
+        f.write(plug.themed_xaml(text, theme, styles, os.path.join(UI_DIR, "logo.png")))
     THEME["name"] = theme
     return path
 
@@ -277,6 +283,8 @@ class Dashboard(object):
         self.since = {}  # audit id -> newest activity seen
         self.people = []  # the organisation's members, for assigning issues
         self.seen = cloud.Seen()  # which conversations have news since this user last looked
+        self.outbox = cloud.Outbox()  # changes made offline, sent when BIMPulse can be reached
+        self.flushing = False
         self.fixed = {}  # topic key -> fields fixed in the model this session
         self.images = {}  # attachment path -> PNG/JPEG bytes
         self._assignee_ids = [None]  # cbAssignee's people, by position
@@ -342,6 +350,16 @@ class Dashboard(object):
         self.btnTourSkip.Click += lambda s, a: self.end_tour()
         self.rootGrid.SizeChanged += lambda s, a: self.tour_step is not None and self.show_tour_step(self.tour_step)
         self.PreviewKeyDown += self.on_key
+        for key, name, what in SHORTCUTS:
+            b = getattr(self, name)
+            tip = b.ToolTip if isinstance(b.ToolTip, basestring) and b.ToolTip else what
+            b.ToolTip = u"{} ({})".format(tip, key)
+        self._theme_handler = None
+        try:  # Revit 2024 and later: follow Revit's theme as soon as it changes
+            self._theme_handler = lambda s, a: self.on_revit_theme()
+            HOST_APP.uiapp.ThemeChanged += self._theme_handler
+        except Exception:
+            self._theme_handler = None
         self.update_account()
 
     def start(self):
@@ -943,16 +961,29 @@ class Dashboard(object):
                 self.load_thread(t)
 
         def send(png=None, viewpoint=None):
-            def work():
-                body = dict(payload)
-                if png:
-                    body["attachment"] = session.attach(audit_id, png)
-                if viewpoint:
-                    body["viewpoint"] = viewpoint
-                if (png or viewpoint) and body["kind"] == "status" and not body.get("body"):
-                    body["body"] = "View attached."
-                return session.add_event(audit_id, body)
-            self.background(work, done)
+            body = dict(payload)
+            if viewpoint:
+                body["viewpoint"] = viewpoint
+            if (png or viewpoint) and body["kind"] == "status" and not body.get("body"):
+                body["body"] = "View attached."
+            if body["kind"] == "comment" and not body.get("body") and not png and not viewpoint:
+                self.status("Nothing to send: type a comment, or attach the view.")
+                return
+            self.send_or_keep("event", audit_id, body, done, png=png)
+
+        def draw_then_send(png, viewpoint):
+            if png is None:
+                send(None, viewpoint)
+                return
+            try:
+                drawn = markup.markup(png, self.Resources, brush)
+            except Exception:
+                debug(u"markup failed: {}".format(traceback.format_exc()))
+                drawn = png
+            if drawn is None:  # sent without the view
+                send(None, None)
+            else:
+                send(drawn, viewpoint)
 
         if not snapshot:
             send()
@@ -971,8 +1002,66 @@ class Dashboard(object):
             except Exception as e:
                 self.status("Could not capture a picture of the view: {}. Sent without it.".format(e), error=True)
                 png = None
-            send(png, viewpoint)
+            # Draw on it once Revit's API call has finished (the window waits for the person).
+            self.Dispatcher.BeginInvoke(System.Action(lambda: draw_then_send(png, viewpoint)))
         self.run(job)
+
+    def send_or_keep(self, kind, audit_id, body, done, png=None, queued=None):
+        """Sends a change to BIMPulse; when it can't be reached, keeps it on this PC (the outbox)
+        and sends it on its own once it can. `queued()` updates the dashboard in that case."""
+        session = self.session
+        kept = []
+
+        def work():
+            try:
+                b = dict(body)
+                if png:
+                    b["attachment"] = session.attach(audit_id, png)
+                if kind == "event":
+                    return session.add_event(audit_id, b)
+                if kind == "bulk":
+                    return session.bulk(audit_id, b)
+                return session.assign(audit_id, b)
+            except Exception as e:
+                if not cloud.offline(e):
+                    raise
+                kept.append(self.outbox.add(session.email, kind, audit_id, body, png))
+                return None
+
+        def finish(result):
+            if kept:
+                if queued is not None:
+                    queued()
+                self.status(u"BIMPulse can't be reached: saved on this PC, and sent by itself when you're back "
+                            u"online ({} waiting).".format(kept[0]), error=True)
+                return
+            done(result)
+        self.background(work, finish)
+
+    def flush_outbox(self):
+        """Sends what was kept while offline (every poll, and after signing in)."""
+        session = self.session
+        if self.flushing or session is None or not self.outbox.count(session.email):
+            return
+        self.flushing = True
+
+        def work():
+            try:
+                return self.outbox.flush(session)
+            finally:
+                self.flushing = False
+
+        def done(result):
+            sent, refused = result
+            if refused:
+                self.status(u"BIMPulse turned down {} saved change{}: {}".format(
+                    len(refused), "" if len(refused) == 1 else "s", refused[0]), error=True)
+            elif sent:
+                self.status(u"\u2713 Back online: sent {} saved change{} to BIMPulse.".format(
+                    sent, "" if sent == 1 else "s"), good=True)
+            if refused:
+                self.sync_reviews()  # back to BIMPulse's statuses where it said no
+        self.quietly(work, done)
 
     def _attachment(self, path):
         """An image sent with a comment: loaded in the background, click to open full size."""
@@ -1075,7 +1164,11 @@ class Dashboard(object):
             self.refresh(keep=t)
             if self.current is t:
                 self.load_thread(t)
-        self.background(lambda: session.assign(audit_id, payload), done)
+        def queued():
+            t.assignee, t.due_on = assignee, due or ""
+            t.assignee_name = self.cbAssignee.SelectedItem if assignee else ""
+            self.refresh(keep=t)
+        self.send_or_keep("assign", audit_id, payload, done, queued=queued)
 
     # ---------- fixing the model ----------
 
@@ -1279,6 +1372,7 @@ class Dashboard(object):
 
     def poll_activity(self):
         """Fetches new comments and statuses from BIMPulse (the Issues page) for the open audits."""
+        self.flush_outbox()
         audits = sorted(set(f.cloud["audit_id"] for f in self.files if f.cloud))
         if self.polling or self.session is None or not audits or not self.IsVisible:
             return
@@ -1564,18 +1658,17 @@ class Dashboard(object):
             return
         bodies, session = cloud.bulk_payload(online, status, reason), self.session
 
-        def work():
-            return [e for audit_id, items in bodies.items() for body in items for e in session.bulk(audit_id, body)]
+        for t in online:
+            t.review = status
+        self.tbNote.Text = ""
+        word = {bcf.RESOLVED: "marked resolved", bcf.IGNORED: "ignored", bcf.OPEN: "reopened"}[status]
 
         def done(events):
-            for t in online:
-                t.review = status
-            self.tbNote.Text = ""
-            self.status("{} issue{} {} in BIMPulse ({} changed).".format(
-                len(online), "" if len(online) == 1 else "s",
-                {bcf.RESOLVED: "marked resolved", bcf.IGNORED: "ignored", bcf.OPEN: "reopened"}[status], len(events)))
+            self.status("{} issue{} {} in BIMPulse.".format(len(online), "" if len(online) == 1 else "s", word))
             self.refresh()
-        self.background(work, done)
+        for audit_id, items in bodies.items():
+            for body in items:
+                self.send_or_keep("bulk", audit_id, body, done, queued=self.refresh)
 
     def on_note(self, sender, args):
         t = self.current
@@ -1694,6 +1787,11 @@ class Dashboard(object):
     def on_closed(self, sender, args):
         self.timer.Stop()
         self.requests.Stop()
+        if self._theme_handler is not None:
+            try:
+                HOST_APP.uiapp.ThemeChanged -= self._theme_handler
+            except Exception:
+                pass
         if self.signin is not None:
             self.signin.cancel()
         save_settings(self.settings)
@@ -1912,6 +2010,7 @@ class Dashboard(object):
         line()
         item("Open as a window" if self.docked else "Dock beside the model", self.toggle_dock)
         item("Show the tour", self.start_tour)
+        item("Keyboard shortcuts", self.show_shortcuts)
         item("Send error reports to BIMPulse", self.toggle_reports, bool(self.settings.get("error_reports")))
         item("Check for updates", lambda: self.check_updates(force=True))
         line()
@@ -1937,11 +2036,72 @@ class Dashboard(object):
         if shown == THEME["name"]:
             self.status("Theme saved.")
             return
-        if self.docked:
-            self.status("Saved: the docked panel changes theme when Revit next starts. Open it as a window to see it now.")
+        self.switch_theme(shown)
+
+    def on_revit_theme(self):
+        """Revit's theme changed: follow it straight away (unless a theme was chosen in the menu)."""
+        shown = current_theme(self.settings)
+        if shown != THEME["name"]:
+            self.switch_theme(shown)
+
+    def switch_theme(self, theme):
+        if not self.docked:
+            self.status("Switching theme...")
+            self.reopen()  # a fresh window, drawn in the theme
             return
-        self.status("Switching theme...")
-        self.reopen()
+        self.recolour(theme)
+
+    def recolour(self, theme):
+        """Repaints the docked panel in the theme where it stands (it can't be reloaded until
+        Revit restarts): every colour on screen and in its resources is swapped."""
+        old = THEME["name"]
+        if old == theme:
+            return
+        swap = plug.swap_map(old, theme)
+        conv = BrushConverter()
+
+        def mapped(b):
+            if not isinstance(b, SolidColorBrush):
+                return None
+            c = b.Color
+            key = "#{:02X}{:02X}{:02X}".format(int(c.R), int(c.G), int(c.B))  # (IronPython: .NET bytes)
+            new = swap.get(key)
+            if new is None:
+                return None
+            return "#{:02X}{}".format(int(c.A), new[1:])
+
+        def fix(el, prop):
+            try:
+                b = getattr(el, prop)
+            except Exception:
+                return
+            new = mapped(b)
+            if new is None:
+                return
+            if b.IsFrozen:
+                setattr(el, prop, conv.ConvertFromString(new))
+            else:
+                b.Color = conv.ConvertFromString(new).Color
+
+        def walk(el):
+            for prop in ("Background", "Foreground", "BorderBrush", "Fill", "Stroke", "CaretBrush"):
+                fix(el, prop)
+            try:
+                n = VisualTreeHelper.GetChildrenCount(el)
+            except Exception:
+                n = 0
+            for i in range(n):
+                walk(VisualTreeHelper.GetChild(el, i))
+
+        for key in list(self.Resources.Keys):  # the styles' colours (templates use them dynamically)
+            value = self.Resources[key]
+            new = mapped(value)
+            if new is not None:
+                self.Resources[key] = conv.ConvertFromString(new)
+        walk(self)
+        THEME["name"] = theme
+        self.refresh(keep=self.current)
+        self.status("Theme changed.")
 
     def reopen(self):
         """Closes this window and opens a fresh one (in Revit's API context, which a new window needs)."""
@@ -2264,9 +2424,43 @@ class Dashboard(object):
         self.lbIssues.ScrollIntoView(self.lbIssues.SelectedItem)
 
     def on_key(self, sender, args):
-        if Keyboard.Modifiers == ModifierKeys.Control and args.Key in (Key.Down, Key.Up):
+        mods = Keyboard.Modifiers
+        if mods == ModifierKeys.Control and args.Key in (Key.Down, Key.Up):
             self.step(1 if args.Key == Key.Down else -1)
             args.Handled = True
+            return
+        if mods == ModifierKeys.Control and args.Key == Key.F:
+            self.show_browse(False)
+            self.tbSearch.Focus()
+            self.tbSearch.SelectAll()
+            args.Handled = True
+            return
+        focused = Keyboard.FocusedElement
+        if int(mods) != 0 or isinstance(focused, (TextBox, ComboBox)) \
+                or self.pnlBrowse.Visibility == Visibility.Visible or self.tour_step is not None:
+            return
+        key = str(args.Key)
+        if key in ("J", "K"):
+            self.step(1 if key == "J" else -1)
+            args.Handled = True
+        elif key in ("F1", "OemQuestion"):
+            self.show_shortcuts()
+            args.Handled = True
+        elif key in ("D3", "NumPad3"):
+            key = "D"
+        for k, name, _ in SHORTCUTS:
+            if k == key:
+                b = getattr(self, name)
+                if b.IsEnabled and b.IsVisible:
+                    b.RaiseEvent(System.Windows.RoutedEventArgs(Button.ClickEvent))
+                args.Handled = True
+
+    def show_shortcuts(self):
+        rows = [u"{}\t{}".format(k, what) for k, _, what in SHORTCUTS]
+        rows += [u"J / K\tNext / previous issue (also Ctrl+Down / Ctrl+Up)", u"Ctrl+F\tSearch issues",
+                 u"Ctrl+Enter\tSend the comment", u"F1 or ?\tThis list"]
+        forms.alert(u"Keyboard shortcuts (when you're not typing in a box):\n\n" + u"\n".join(rows),
+                    title="BIMPulse Dashboard")
 
 
 def _logged(name, method):

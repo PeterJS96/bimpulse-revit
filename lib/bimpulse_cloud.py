@@ -780,3 +780,78 @@ def latest_version(transport=None):
         return None
     text = _to_text(data or b"").strip()
     return text if status == 200 and re.match(r"^[0-9a-f]{40}$", text) else None
+
+
+# --------------------------------------------------------------- offline
+
+OUTBOX_FILE = os.path.join(_APPDATA, "BIMPulse", "outbox.json")
+
+
+def offline(error):
+    """True when a call failed because BIMPulse couldn't be reached (not a refusal)."""
+    return isinstance(error, CloudError) and not isinstance(error, SignedOut) and error.status == 0
+
+
+class Outbox(object):
+    """Comments, statuses and assignments made while BIMPulse can't be reached, kept on this PC
+    (for the account that made them) and sent in order when it can be reached again."""
+
+    def __init__(self, path=OUTBOX_FILE):
+        self.path = path
+        self._lock = threading.Lock()
+        try:
+            with io.open(path, encoding="utf-8") as f:
+                self.items = json.load(f)
+        except (IOError, OSError, ValueError):
+            self.items = []
+
+    def _save(self):
+        try:
+            folder = os.path.dirname(self.path)
+            if not os.path.isdir(folder):
+                os.makedirs(folder)
+            with io.open(self.path, "w", encoding="utf-8") as f:
+                f.write(_to_text(json.dumps(self.items, ensure_ascii=False)))
+        except (IOError, OSError):
+            pass
+
+    def add(self, account, kind, audit_id, body, png=None):
+        """kind: "event", "bulk" or "assign"; png: a picture to upload first (events only)."""
+        with self._lock:
+            self.items.append({"account": (account or "").lower(), "kind": kind, "audit_id": audit_id,
+                               "body": body, "png": base64.b64encode(png).decode("ascii") if png else None,
+                               "saved_at": time.time()})
+            self._save()
+            return self.count(account)
+
+    def count(self, account):
+        account = (account or "").lower()
+        return sum(1 for i in self.items if i["account"] == account)
+
+    def flush(self, session):
+        """Sends this account's waiting changes in order. Stops while still offline. Returns
+        (sent, refused): refused are dropped with BIMPulse's reason (e.g. no longer allowed)."""
+        account = (session.email or "").lower()
+        sent, refused = 0, []
+        with self._lock:
+            mine = [i for i in self.items if i["account"] == account]
+        for item in mine:
+            try:
+                body = dict(item["body"])
+                if item.get("png"):
+                    body["attachment"] = session.attach(item["audit_id"], base64.b64decode(item["png"]))
+                if item["kind"] == "event":
+                    session.add_event(item["audit_id"], body)
+                elif item["kind"] == "bulk":
+                    session.bulk(item["audit_id"], body)
+                else:
+                    session.assign(item["audit_id"], body)
+                sent += 1
+            except CloudError as e:
+                if offline(e) or isinstance(e, SignedOut):
+                    break
+                refused.append(str(e))
+            with self._lock:
+                self.items = [i for i in self.items if i is not item]
+                self._save()
+        return sent, refused
