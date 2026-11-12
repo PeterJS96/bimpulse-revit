@@ -4,218 +4,13 @@
         WindowStartupLocation="CenterScreen" Background="#050B14" Foreground="#E6EEF7"
         FontFamily="Segoe UI" FontSize="13" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
     <Window.Resources>
-        <SolidColorBrush x:Key="Bg" Color="#050B14"/>
-        <SolidColorBrush x:Key="Panel" Color="#0B1626"/>
-        <SolidColorBrush x:Key="Raised" Color="#10203A"/>
-        <SolidColorBrush x:Key="Line" Color="#1C2B40"/>
-        <SolidColorBrush x:Key="Muted" Color="#8A9BB3"/>
-        <SolidColorBrush x:Key="Text" Color="#E6EEF7"/>
-        <SolidColorBrush x:Key="Accent" Color="#00A0E3"/>
-        <FontFamily x:Key="Mono">Consolas</FontFamily>
-
-        <!-- Uppercase mono labels, as in the app -->
-        <Style x:Key="Label" TargetType="TextBlock">
-            <Setter Property="FontFamily" Value="{StaticResource Mono}"/>
-            <Setter Property="FontSize" Value="10.5"/>
-            <Setter Property="Foreground" Value="{StaticResource Muted}"/>
-        </Style>
-
-        <Style x:Key="Card" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource Panel}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="12"/>
-        </Style>
-
-        <Style TargetType="Button">
-            <Setter Property="Foreground" Value="{StaticResource Text}"/>
-            <Setter Property="Background" Value="{StaticResource Raised}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
-            <Setter Property="Padding" Value="12,7"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="1" CornerRadius="8" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="BorderBrush" Value="#00A0E3"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="bd" Property="Opacity" Value="0.4"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Background" Value="#00A0E3"/>
-            <Setter Property="BorderBrush" Value="#00A0E3"/>
-            <Setter Property="Foreground" Value="#03101C"/>
-        </Style>
-        <Style x:Key="Ghost" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Padding" Value="10,6"/>
-        </Style>
-
-        <Style TargetType="TextBox">
-            <Setter Property="Foreground" Value="{StaticResource Text}"/>
-            <Setter Property="CaretBrush" Value="#00A0E3"/>
-            <Setter Property="SelectionBrush" Value="#00A0E3"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="TextBox">
-                        <Border x:Name="bd" Background="#081221" BorderBrush="#1C2B40" BorderThickness="1" CornerRadius="8" Padding="8,6">
-                            <ScrollViewer x:Name="PART_ContentHost" Margin="0"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="bd" Property="BorderBrush" Value="#00A0E3"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="{StaticResource Muted}"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="CheckBox">
-                        <StackPanel Orientation="Horizontal" Background="Transparent">
-                            <Border x:Name="box" Width="16" Height="16" CornerRadius="4" BorderBrush="#2A3D57" BorderThickness="1" Background="#081221">
-                                <TextBlock x:Name="tick" Text="&#x2713;" FontSize="11" FontWeight="Bold" Foreground="#03101C"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
-                            </Border>
-                            <ContentPresenter Margin="7,0,0,0" VerticalAlignment="Center"/>
-                        </StackPanel>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="box" Property="Background" Value="#00A0E3"/>
-                                <Setter TargetName="box" Property="BorderBrush" Value="#00A0E3"/>
-                                <Setter TargetName="tick" Property="Visibility" Value="Visible"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Dark combo box (the Windows one ignores Background) -->
-        <Style TargetType="ComboBoxItem">
-            <Setter Property="Foreground" Value="{StaticResource Text}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ComboBoxItem">
-                        <Border x:Name="bd" Background="Transparent" CornerRadius="6" Padding="10,6">
-                            <ContentPresenter/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="#14304D"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style TargetType="ComboBox">
-            <Setter Property="Foreground" Value="{StaticResource Text}"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ComboBox">
-                        <Grid>
-                            <ToggleButton x:Name="toggle" Focusable="False" ClickMode="Press"
-                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
-                                <ToggleButton.Template>
-                                    <ControlTemplate TargetType="ToggleButton">
-                                        <Border x:Name="bd" Background="#081221" BorderBrush="#1C2B40" BorderThickness="1" CornerRadius="8">
-                                            <TextBlock Text="&#x25BE;" Foreground="#8A9BB3" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="bd" Property="BorderBrush" Value="#00A0E3"/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </ToggleButton.Template>
-                            </ToggleButton>
-                            <ContentPresenter Content="{TemplateBinding SelectionBoxItem}" IsHitTestVisible="False"
-                                              Margin="10,6,26,6" VerticalAlignment="Center"/>
-                            <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True" Focusable="False">
-                                <Border Background="#0B1626" BorderBrush="#1C2B40" BorderThickness="1" CornerRadius="8" Padding="4"
-                                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="360" Margin="0,4,0,0">
-                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                        <ItemsPresenter/>
-                                    </ScrollViewer>
-                                </Border>
-                            </Popup>
-                        </Grid>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Slim scroll bars -->
-        <Style TargetType="ScrollBar">
-            <Setter Property="Width" Value="8"/>
-            <Setter Property="MinWidth" Value="8"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ScrollBar">
-                        <Track x:Name="PART_Track" IsDirectionReversed="True">
-                            <Track.Thumb>
-                                <Thumb>
-                                    <Thumb.Template>
-                                        <ControlTemplate TargetType="Thumb">
-                                            <Border Background="#22344F" CornerRadius="4" Margin="1"/>
-                                        </ControlTemplate>
-                                    </Thumb.Template>
-                                </Thumb>
-                            </Track.Thumb>
-                        </Track>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-            <Style.Triggers>
-                <Trigger Property="Orientation" Value="Horizontal">
-                    <Setter Property="Visibility" Value="Collapsed"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-
-        <Style TargetType="ListBoxItem">
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ListBoxItem">
-                        <Border x:Name="bd" Background="#0B1626" BorderBrush="#16243A" BorderThickness="1" CornerRadius="10" Margin="0,0,6,6">
-                            <ContentPresenter/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="BorderBrush" Value="#2A4A6E"/>
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="bd" Property="BorderBrush" Value="#00A0E3"/>
-                                <Setter TargetName="bd" Property="Background" Value="#0E2236"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+<!--BIMPULSE:STYLES-->
     </Window.Resources>
 
+    <Grid x:Name="rootGrid">
     <Grid Margin="20,16,20,12">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -244,7 +39,7 @@
                 <Button x:Name="btnReload" Content="Reload" Margin="0,0,8,0" ToolTip="Fetch the latest issues and statuses from BIMPulse"/>
                 <Button x:Name="btnCheck" Content="Check against model" Margin="0,0,14,0"
                         ToolTip="Look up every issue's elements in this model (and its links)"/>
-                <Button x:Name="btnAccount" Style="{StaticResource Ghost}" Padding="6,4">
+                <Button x:Name="btnAccount" Style="{StaticResource Ghost}" Padding="6,4" Margin="0,0,6,0">
                     <StackPanel Orientation="Horizontal">
                         <Border x:Name="bdAvatar" Width="26" Height="26" CornerRadius="13" Background="#14304D">
                             <TextBlock x:Name="txtAvatar" Text="?" FontWeight="Bold" Foreground="#00A0E3"
@@ -254,11 +49,30 @@
                                    TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
                 </Button>
+                <Button x:Name="btnMenu" Style="{StaticResource Ghost}" Content="&#x22EF;" FontSize="16" Padding="10,2"
+                        ToolTip="Theme, docking, error reports, updates and the tour"/>
             </StackPanel>
         </Grid>
 
+        <!-- A new version of the plugin -->
+        <Border x:Name="bdUpdate" Grid.Row="1" Margin="0,0,0,12" Padding="14,9" CornerRadius="10" Background="#14304D"
+                BorderBrush="#00A0E3" BorderThickness="1" Visibility="Collapsed">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="txtUpdate" VerticalAlignment="Center" TextWrapping="Wrap"
+                           Text="A new version of the BIMPulse tools for Revit is available."/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0">
+                    <Button x:Name="btnUpdateNow" Style="{StaticResource Primary}" Content="Update now" Padding="12,5" Margin="0,0,8,0"/>
+                    <Button x:Name="btnUpdateLater" Style="{StaticResource Ghost}" Content="Later" Padding="10,5"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
         <!-- Stats -->
-        <Grid Grid.Row="1" Margin="0,0,0,14">
+        <Grid Grid.Row="2" Margin="0,0,0,14">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="*"/>
@@ -316,7 +130,7 @@
         </Grid>
 
         <!-- Body -->
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="3">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="430" MinWidth="340"/>
                 <ColumnDefinition Width="14"/>
@@ -324,7 +138,7 @@
             </Grid.ColumnDefinitions>
 
             <!-- Issue list -->
-            <Border Style="{StaticResource Card}" Padding="14">
+            <Border x:Name="cardList" Style="{StaticResource Card}" Padding="14">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -376,7 +190,7 @@
             </Border>
 
             <!-- Detail -->
-            <Border Grid.Column="2" Style="{StaticResource Card}">
+            <Border x:Name="cardDetail" Grid.Column="2" Style="{StaticResource Card}">
                 <Grid>
                     <StackPanel x:Name="pnlEmpty" VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="Select an issue" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center"/>
@@ -471,7 +285,7 @@
                                                TextWrapping="Wrap" Margin="0,0,210,0"/>
                                     <CheckBox x:Name="chkSnapshot" Content="Attach this view" HorizontalAlignment="Right"
                                               VerticalAlignment="Center" Margin="0,0,86,0" Visibility="Collapsed"
-                                              ToolTip="Send a picture of the active Revit view with the comment"/>
+                                              ToolTip="Send a picture of the active Revit view and the view itself, so anyone can go straight back to it"/>
                                     <Button x:Name="btnSend" Style="{StaticResource Primary}" Content="Send" HorizontalAlignment="Right"
                                             Padding="16,5" Visibility="Collapsed" ToolTip="Send to BIMPulse (Ctrl+Enter)"/>
                                 </Grid>
@@ -517,7 +331,7 @@
         </Grid>
 
         <!-- BIMPulse browser (over the dashboard) -->
-        <Grid x:Name="pnlBrowse" Grid.Row="1" Grid.RowSpan="2" Background="#050B14" Visibility="Collapsed">
+        <Grid x:Name="pnlBrowse" Grid.Row="2" Grid.RowSpan="2" Background="#050B14" Visibility="Collapsed">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="360"/>
                 <ColumnDefinition Width="14"/>
@@ -591,7 +405,7 @@
         </Grid>
 
         <!-- Status bar -->
-        <Grid Grid.Row="3" Margin="2,10,2,0">
+        <Grid Grid.Row="4" Margin="2,10,2,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -603,5 +417,28 @@
                 <Button x:Name="btnClear" Style="{StaticResource Ghost}" Content="Clear colours &amp; isolation"/>
             </StackPanel>
         </Grid>
+    </Grid>
+
+    <!-- First-run tour: dims everything but the spotlit control -->
+    <Grid x:Name="pnlTour" Visibility="Collapsed">
+        <Path x:Name="pathTourDim" Fill="#B3020610"/>
+        <Border x:Name="bdTourRing" BorderBrush="#00A0E3" BorderThickness="2" CornerRadius="10" HorizontalAlignment="Left"
+                VerticalAlignment="Top" IsHitTestVisible="False"/>
+        <Border x:Name="bdTourCard" Style="{StaticResource Card}" Width="340" Padding="18,14" HorizontalAlignment="Left"
+                VerticalAlignment="Top" BorderBrush="#00A0E3">
+            <StackPanel>
+                <TextBlock x:Name="txtTourStep" Style="{StaticResource Label}" Text="1 OF 6"/>
+                <TextBlock x:Name="txtTourTitle" FontSize="16" FontWeight="Bold" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                <TextBlock x:Name="txtTourBody" Foreground="#C9D6E6" Margin="0,6,0,0" TextWrapping="Wrap" LineHeight="19"/>
+                <Grid Margin="0,14,0,0">
+                    <Button x:Name="btnTourSkip" Style="{StaticResource Ghost}" Content="Skip tour" HorizontalAlignment="Left"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="btnTourBack" Content="Back" Margin="0,0,8,0" Padding="12,5"/>
+                        <Button x:Name="btnTourNext" Style="{StaticResource Primary}" Content="Next" Padding="14,5"/>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </Grid>
     </Grid>
 </Window>

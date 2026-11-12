@@ -34,6 +34,9 @@ except ImportError:  # IronPython 2.7
     from urlparse import parse_qsl
 
 DEFAULT_WEB_URL = "https://bimpulse.whitecode.co.uk"
+# The plugin's public repository: pyRevit installs and updates it from the master branch.
+RELEASES = "https://api.github.com/repos/PeterJS96/bimpulse-revit/commits/master"
+CACHE_DAYS = 30  # downloaded results not opened for this long are removed
 CONNECT_PATH = "/connect/revit"
 LOGIN_TIMEOUT = 300  # seconds to finish signing in in the browser
 IRONPYTHON = sys.platform == "cli"
@@ -76,6 +79,8 @@ def _dotnet_request(method, url, headers, body):
             req.ContentType = v
         elif k.lower() == "accept":
             req.Accept = v
+        elif k.lower() == "user-agent":  # a restricted header in .NET
+            req.UserAgent = v
         else:
             req.Headers.Add(k, v)
     if body is not None:
@@ -332,6 +337,15 @@ class Session(object):
         return self.call("GET", self._path("/issues/attachments", "/consult/attachments"),
                          [("path", _to_bytes(path))], raw=True)
 
+    def next_request(self):
+        """The newest "Open in Revit" asked for on the web in the last two minutes (claimed, so
+        only one Revit window gets it), or None: {audit_id, module, consultant, issue_key, viewpoint}."""
+        return self.call("GET", self._path("/issues/revit-requests/next", "/consult/revit-requests/next"))
+
+    def report_error(self, body):
+        """Sends an error report to BIMPulse support (only when the person turned them on)."""
+        return self.call("POST", "/revit/error-reports", body=body)
+
     def uniclass(self, prefix, query):
         """Uniclass 2015 codes matching the query: [{code, title}]."""
         return self.call("GET", self._path("/revit/uniclass", "/consult/uniclass"),
@@ -582,7 +596,7 @@ def assign_payload(topic, assignee, due_on):
                 assignee=assignee or None, due_on=due_on or None, source="revit")
 
 
-def event_payload(topic, kind, status=None, body=None, attachment=None):
+def event_payload(topic, kind, status=None, body=None, attachment=None, viewpoint=None):
     """The POST /issues/audits/{id}/events body for a topic from BIMPulse, or None
     (a local file, or an older export without issue keys)."""
     cloud = getattr(topic.source, "cloud", None) if topic.source else None
@@ -593,6 +607,8 @@ def event_payload(topic, kind, status=None, body=None, attachment=None):
            "title": (topic.title or "")[:300] or None, "source": "revit"}
     if attachment:
         out["attachment"] = attachment
+    if viewpoint:
+        out["viewpoint"] = viewpoint
     return out
 
 
@@ -700,3 +716,67 @@ class Seen(object):
                 f.write(_to_text(json.dumps(self.seen, ensure_ascii=False)))
         except (IOError, OSError):
             pass
+
+
+# --------------------------------------------------------------- housekeeping
+
+def clean_cache(keep=(), folder=CACHE_DIR, days=CACHE_DAYS, now=None):
+    """Removes downloaded results not written for `days` (except the open ones, `keep`), and
+    folders left empty. Returns how many files went. Never fails."""
+    now = time.time() if now is None else now
+    keep = set(os.path.normcase(os.path.abspath(k)) for k in keep or ())
+    removed = 0
+    if not os.path.isdir(folder):
+        return 0
+    for base, dirs, files in os.walk(folder, topdown=False):
+        for name in files:
+            path = os.path.join(base, name)
+            try:
+                if os.path.normcase(os.path.abspath(path)) in keep:
+                    continue
+                if now - os.path.getmtime(path) > days * 86400:
+                    os.remove(path)
+                    removed += 1
+            except OSError:
+                pass
+        if base != folder:
+            try:
+                if not os.listdir(base):
+                    os.rmdir(base)
+            except OSError:
+                pass
+    return removed
+
+
+def installed_version(extension_dir):
+    """The installed plugin's commit (pyRevit installs it as a git clone), or None (a copy)."""
+    git = os.path.join(extension_dir, ".git")
+    try:
+        with io.open(os.path.join(git, "HEAD"), encoding="utf-8") as f:
+            head = f.read().strip()
+        if not head.startswith("ref:"):
+            return head or None
+        ref = head[4:].strip()
+        path = os.path.join(git, *ref.split("/"))
+        if os.path.exists(path):
+            with io.open(path, encoding="utf-8") as f:
+                return f.read().strip() or None
+        with io.open(os.path.join(git, "packed-refs"), encoding="utf-8") as f:
+            for line in f:
+                parts = line.strip().split(" ")
+                if len(parts) == 2 and parts[1] == ref:
+                    return parts[0]
+    except (IOError, OSError):
+        pass
+    return None
+
+
+def latest_version(transport=None):
+    """The newest published commit of the plugin (GitHub), or None when it can't be reached."""
+    try:
+        status, data = (transport or default_transport)(
+            "GET", RELEASES, {"Accept": "application/vnd.github.sha", "User-Agent": "BIMPulse-Revit"}, None)
+    except CloudError:
+        return None
+    text = _to_text(data or b"").strip()
+    return text if status == 200 and re.match(r"^[0-9a-f]{40}$", text) else None

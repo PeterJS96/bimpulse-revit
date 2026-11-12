@@ -615,3 +615,130 @@ def snapshot_png(uidoc, width=1400):
             return f.read()
     finally:
         shutil.rmtree(folder, ignore_errors=True)
+
+
+# ------------------------------------------------------------------ viewpoints
+
+VIEWPOINT_NAME = "BIMPulse Viewpoint"
+_LIMIT = 1e7
+
+
+def _xyz(p):
+    return [round(max(-_LIMIT, min(_LIMIT, float(v))), 4) for v in (p.X, p.Y, p.Z)]
+
+
+def _point(v):
+    return XYZ(float(v[0]), float(v[1]), float(v[2]))
+
+
+def capture_viewpoint(uidoc):
+    """Where the active view is (sent with a comment): its name and type, a 3D view's camera
+    and section box, and the zoomed area. Plain numbers in feet; nothing else of the model."""
+    view = uidoc.ActiveView
+    vp = {"view": name_of(view)[:200], "view_type": str(view.ViewType)[:40],
+          "document": (uidoc.Document.Title or "")[:200]}
+    if isinstance(view, View3D):
+        o = view.GetOrientation()
+        vp["eye"], vp["forward"], vp["up"] = _xyz(o.EyePosition), _xyz(o.ForwardDirection), _xyz(o.UpDirection)
+        vp["perspective"] = bool(view.IsPerspective)
+        if view.IsSectionBoxActive:
+            sb = view.GetSectionBox()
+            a, b = sb.Transform.OfPoint(sb.Min), sb.Transform.OfPoint(sb.Max)
+            vp["section_box"] = [_xyz(XYZ(min(a.X, b.X), min(a.Y, b.Y), min(a.Z, b.Z))),
+                                 _xyz(XYZ(max(a.X, b.X), max(a.Y, b.Y), max(a.Z, b.Z)))]
+    uv = _ui_view(uidoc, view)
+    if uv is not None:
+        corners = uv.GetZoomCorners()
+        vp["zoom"] = [_xyz(corners[0]), _xyz(corners[1])]
+    try:
+        if view.Scale > 0:
+            vp["scale"] = int(view.Scale)
+    except Exception:
+        pass
+    return vp
+
+
+def _viewpoint_view(doc, perspective):
+    name = VIEWPOINT_NAME + (" (camera)" if perspective else "")
+    for v in FilteredElementCollector(doc).OfClass(View3D):
+        if not v.IsTemplate and name_of(v) == name:
+            return v
+    vft = next(t for t in FilteredElementCollector(doc).OfClass(ViewFamilyType)
+               if t.ViewFamily == ViewFamily.ThreeDimensional)
+    v = View3D.CreatePerspective(doc, vft.Id) if perspective else View3D.CreateIsometric(doc, vft.Id)
+    v.Name = name
+    return v
+
+
+def _find_view(doc, name, view_type):
+    from Autodesk.Revit.DB import View
+    found = None
+    for v in FilteredElementCollector(doc).OfClass(View):
+        if v.IsTemplate or name_of(v) != name:
+            continue
+        if str(v.ViewType) == view_type:
+            return v
+        found = found or v
+    return found
+
+
+def restore_viewpoint(uidoc, vp):
+    """Goes back to a viewpoint: a 3D camera (and section box) in the 'BIMPulse Viewpoint' view,
+    or the named 2D view zoomed to the same area. Returns the view's name."""
+    doc = uidoc.Document
+    if vp.get("eye") and vp.get("forward") and vp.get("up"):
+        from Autodesk.Revit.DB import ViewOrientation3D
+        tx = Transaction(doc, "BIMPulse: go to viewpoint")
+        tx.Start()
+        try:
+            view = _viewpoint_view(doc, bool(vp.get("perspective")))
+            if view.ViewTemplateId != ElementId.InvalidElementId:
+                view.ViewTemplateId = ElementId.InvalidElementId
+            view.SetOrientation(ViewOrientation3D(_point(vp["eye"]), _point(vp["up"]).Normalize(),
+                                                  _point(vp["forward"]).Normalize()))
+            box = vp.get("section_box")
+            if box:
+                sb = BoundingBoxXYZ()
+                sb.Min, sb.Max = _point(box[0]), _point(box[1])
+                view.IsSectionBoxActive = True
+                view.SetSectionBox(sb)
+            else:
+                view.IsSectionBoxActive = False
+            tx.Commit()
+        except Exception:
+            tx.RollBack()
+            raise
+    else:
+        view = _find_view(doc, vp.get("view") or "", vp.get("view_type") or "")
+        if view is None:
+            raise ValueError(u"The view '{}' is not in this model".format(vp.get("view") or "?"))
+    if uidoc.ActiveView.Id != view.Id:
+        uidoc.ActiveView = view
+    zoom = vp.get("zoom")
+    uv = _ui_view(uidoc, view)
+    if zoom and uv is not None:
+        uv.ZoomAndCenterRectangle(_point(zoom[0]), _point(zoom[1]))
+    return name_of(view)
+
+
+def apply_fix_many(doc, groups, field, value):
+    """apply_fix for several issues' elements in one undoable change: `groups` is
+    [(key, hits)]. Returns ({key: changed}, problems)."""
+    tx_name = u"BIMPulse: set {} on {} issues".format(field, len(groups))
+    from Autodesk.Revit.DB import TransactionGroup
+    tg = TransactionGroup(doc, tx_name)
+    tg.Start()
+    changed, problems = {}, []
+    try:
+        for key, hits in groups:
+            n, p = apply_fix(doc, hits, field, value)
+            changed[key] = n
+            problems.extend(p)
+        if any(changed.values()):
+            tg.Assimilate()  # one entry in Undo
+        else:
+            tg.RollBack()
+    except Exception:
+        tg.RollBack()
+        raise
+    return changed, problems
