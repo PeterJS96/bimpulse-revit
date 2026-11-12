@@ -590,8 +590,8 @@ def apply_fix(doc, hits, field, value):
     return changed, problems
 
 
-def snapshot_png(uidoc, width=1400):
-    """The active view as PNG bytes (to send with a comment)."""
+def snapshot_png(uidoc, width=1600):
+    """What the active view shows on screen, as PNG bytes (to send with a comment)."""
     import os
     import shutil
     import tempfile
@@ -600,7 +600,11 @@ def snapshot_png(uidoc, width=1400):
     folder = tempfile.mkdtemp(prefix="bimpulse-view-")
     try:
         opts = ImageExportOptions()
-        opts.ExportRange = ExportRange.CurrentView
+        # What is on screen (the current zoom), not the whole view zoomed to fit.
+        try:
+            opts.ExportRange = ExportRange.VisibleRegionOfCurrentView
+        except AttributeError:
+            opts.ExportRange = ExportRange.CurrentView
         opts.FilePath = os.path.join(folder, "view")
         opts.ZoomType = ZoomFitType.FitToPage
         opts.PixelSize = width
