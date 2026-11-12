@@ -51,6 +51,23 @@ PANEL_ID = "6f3c2a91-4b7e-4f0d-9c55-2e8a7d1b3c40"
 REQUEST_SECONDS = 6  # how often BIMPulse is asked for "Open in Revit" requests
 THEME = {"name": "dark"}  # the theme the open dashboards were drawn in
 
+
+def _code_stamp():
+    try:
+        return os.path.getmtime(os.path.abspath(__file__))
+    except OSError:
+        return None
+
+
+# When this code was loaded: after an update, a dashboard still running older code (the docked
+# panel keeps its code until Revit restarts) leaves "Open in Revit" requests to the new code.
+LOADED = _code_stamp()
+
+
+def outdated():
+    now = _code_stamp()
+    return LOADED is not None and now is not None and now != LOADED
+
 SEV_COLOUR = {"critical": "#EF4444", "error": "#F97316", "warning": "#F59E0B", "info": "#00A0E3"}
 SEV_LABEL = {"critical": "CRITICAL", "error": "ERROR", "warning": "WARNING", "info": "INFO"}
 REVIEW_COLOUR = {bcf.OPEN: "#F59E0B", bcf.RESOLVED: "#22C55E", bcf.IGNORED: "#8A9BB3"}
@@ -2109,6 +2126,12 @@ class Dashboard(object):
 
     def poll_requests(self):
         if self.asking or self.session is None:
+            return
+        if outdated():
+            self.requests.Stop()
+            self.status("BIMPulse for Revit was updated. Restart Revit to update the docked panel"
+                        if self.docked else "BIMPulse for Revit was updated. Close and reopen the Dashboard to use it.",
+                        error=True)
             return
         self.asking = True
         session = self.session
