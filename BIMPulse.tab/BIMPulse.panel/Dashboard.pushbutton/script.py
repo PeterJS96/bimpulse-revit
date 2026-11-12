@@ -249,6 +249,10 @@ class IssuesWindow(forms.WPFWindow):
 
         self.update_account()
         last = [p for p in self.settings.get("files", []) if os.path.exists(p)]
+        if last and (self.settings.get("account") or None) != self._account():
+            # Opened by another account (or signed out since): never show its results to this one.
+            last = []
+            self.forget_files()
         if last:
             self.load(last, self.settings.get("cloud") or {})
         else:
@@ -348,6 +352,8 @@ class IssuesWindow(forms.WPFWindow):
         self.files = files
         self.settings["files"] = [f.path for f in files]
         self.settings["cloud"] = self._tags()
+        # Whose results these are: they reopen next time only for the same account.
+        self.settings["account"] = self._account()
         local = [f for f in files if not f.cloud]
         if local:
             self.settings["folder"] = os.path.dirname(local[0].path)
@@ -1389,6 +1395,22 @@ class IssuesWindow(forms.WPFWindow):
         self.txtAvatar.Text = (email[:1] or "?").upper()
         self.btnAccount.ToolTip = "Signed in to BIMPulse as {}. Click to sign out.".format(email)
 
+    def _account(self):
+        """The signed-in BIMPulse account (lower-case email), or None."""
+        return (self.session.email or "").lower() or None if self.session is not None else None
+
+    def forget_files(self):
+        """Closes every open result and forgets them, so the next account starts empty."""
+        self.files = []
+        self.current = None
+        self.since = {}
+        self.settings["files"], self.settings["cloud"], self.settings["account"] = [], {}, None
+        save_settings(self.settings)
+        for finder in self.finders.values():
+            finder.cache.clear()
+        self.refresh()
+        self.status("Click Browse BIMPulse to open a saved audit's issues.")
+
     def on_account(self, sender, args):
         if self.session is None:
             self.sign_in()
@@ -1399,6 +1421,7 @@ class IssuesWindow(forms.WPFWindow):
             self.session, self.me = None, None
             self.update_account()
             self.show_browse(False)
+            self.forget_files()
             self.background(session.sign_out, lambda _: self.status("Signed out of BIMPulse."))
 
     def sign_in(self, then_browse=False):
@@ -1409,7 +1432,10 @@ class IssuesWindow(forms.WPFWindow):
             def ui():
                 self.signin = None
                 if session is not None:
+                    previous = self.settings.get("account")
                     self.session = session
+                    if previous and previous != self._account():
+                        self.forget_files()  # another account's results: not for this one
                     self.update_account()
                     self.status("Signed in to BIMPulse as {}.".format(session.email))
                     self.sync_reviews()
