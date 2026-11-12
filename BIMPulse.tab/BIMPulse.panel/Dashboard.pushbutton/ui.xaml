@@ -1,0 +1,607 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="BIMPulse Dashboard" Width="1320" Height="840" MinWidth="1040" MinHeight="620"
+        WindowStartupLocation="CenterScreen" Background="#050B14" Foreground="#E6EEF7"
+        FontFamily="Segoe UI" FontSize="13" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+    <Window.Resources>
+        <SolidColorBrush x:Key="Bg" Color="#050B14"/>
+        <SolidColorBrush x:Key="Panel" Color="#0B1626"/>
+        <SolidColorBrush x:Key="Raised" Color="#10203A"/>
+        <SolidColorBrush x:Key="Line" Color="#1C2B40"/>
+        <SolidColorBrush x:Key="Muted" Color="#8A9BB3"/>
+        <SolidColorBrush x:Key="Text" Color="#E6EEF7"/>
+        <SolidColorBrush x:Key="Accent" Color="#00A0E3"/>
+        <FontFamily x:Key="Mono">Consolas</FontFamily>
+
+        <!-- Uppercase mono labels, as in the app -->
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource Mono}"/>
+            <Setter Property="FontSize" Value="10.5"/>
+            <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+        </Style>
+
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Panel}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="12"/>
+        </Style>
+
+        <Style TargetType="Button">
+            <Setter Property="Foreground" Value="{StaticResource Text}"/>
+            <Setter Property="Background" Value="{StaticResource Raised}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+            <Setter Property="Padding" Value="12,7"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#00A0E3"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="#00A0E3"/>
+            <Setter Property="BorderBrush" Value="#00A0E3"/>
+            <Setter Property="Foreground" Value="#03101C"/>
+        </Style>
+        <Style x:Key="Ghost" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="10,6"/>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Foreground" Value="{StaticResource Text}"/>
+            <Setter Property="CaretBrush" Value="#00A0E3"/>
+            <Setter Property="SelectionBrush" Value="#00A0E3"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="bd" Background="#081221" BorderBrush="#1C2B40" BorderThickness="1" CornerRadius="8" Padding="8,6">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="0"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#00A0E3"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <StackPanel Orientation="Horizontal" Background="Transparent">
+                            <Border x:Name="box" Width="16" Height="16" CornerRadius="4" BorderBrush="#2A3D57" BorderThickness="1" Background="#081221">
+                                <TextBlock x:Name="tick" Text="&#x2713;" FontSize="11" FontWeight="Bold" Foreground="#03101C"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+                            </Border>
+                            <ContentPresenter Margin="7,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="box" Property="Background" Value="#00A0E3"/>
+                                <Setter TargetName="box" Property="BorderBrush" Value="#00A0E3"/>
+                                <Setter TargetName="tick" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Dark combo box (the Windows one ignores Background) -->
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="{StaticResource Text}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="bd" Background="Transparent" CornerRadius="6" Padding="10,6">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#14304D"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Foreground" Value="{StaticResource Text}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="toggle" Focusable="False" ClickMode="Press"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="bd" Background="#081221" BorderBrush="#1C2B40" BorderThickness="1" CornerRadius="8">
+                                            <TextBlock Text="&#x25BE;" Foreground="#8A9BB3" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="BorderBrush" Value="#00A0E3"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <ContentPresenter Content="{TemplateBinding SelectionBoxItem}" IsHitTestVisible="False"
+                                              Margin="10,6,26,6" VerticalAlignment="Center"/>
+                            <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True" Focusable="False">
+                                <Border Background="#0B1626" BorderBrush="#1C2B40" BorderThickness="1" CornerRadius="8" Padding="4"
+                                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="360" Margin="0,4,0,0">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Slim scroll bars -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="8"/>
+            <Setter Property="MinWidth" Value="8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Track x:Name="PART_Track" IsDirectionReversed="True">
+                            <Track.Thumb>
+                                <Thumb>
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType="Thumb">
+                                            <Border Background="#22344F" CornerRadius="4" Margin="1"/>
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
+                            </Track.Thumb>
+                        </Track>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="Orientation" Value="Horizontal">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="bd" Background="#0B1626" BorderBrush="#16243A" BorderThickness="1" CornerRadius="10" Margin="0,0,6,6">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#2A4A6E"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#00A0E3"/>
+                                <Setter TargetName="bd" Property="Background" Value="#0E2236"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20,16,20,12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="0,0,0,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Border Width="38" Height="38" CornerRadius="10" Background="#00A0E3" Margin="0,0,12,0">
+                    <Path Data="M2,12 L6,12 L8.5,5 L12,19 L15,9 L17,12 L22,12" Stroke="#03101C" StrokeThickness="2.2"
+                          StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Stretch="Uniform" Margin="8"/>
+                </Border>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource Label}" Text="BIMPULSE · AUDIT ISSUES"/>
+                    <TextBlock x:Name="txtProject" Text="BIMPulse Dashboard" FontSize="20" FontWeight="Bold"/>
+                </StackPanel>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="btnBrowse" Style="{StaticResource Primary}" Content="Browse BIMPulse" Margin="0,0,8,0"
+                        ToolTip="Open your projects' saved audits from BIMPulse"/>
+                <Button x:Name="btnReload" Content="Reload" Margin="0,0,8,0" ToolTip="Fetch the latest issues and statuses from BIMPulse"/>
+                <Button x:Name="btnCheck" Content="Check against model" Margin="0,0,14,0"
+                        ToolTip="Look up every issue's elements in this model (and its links)"/>
+                <Button x:Name="btnAccount" Style="{StaticResource Ghost}" Padding="6,4">
+                    <StackPanel Orientation="Horizontal">
+                        <Border x:Name="bdAvatar" Width="26" Height="26" CornerRadius="13" Background="#14304D">
+                            <TextBlock x:Name="txtAvatar" Text="?" FontWeight="Bold" Foreground="#00A0E3"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock x:Name="txtAccount" Text="Sign in" Margin="8,0,4,0" VerticalAlignment="Center" MaxWidth="180"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- Stats -->
+        <Grid Grid.Row="1" Margin="0,0,0,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="1.9*"/>
+            </Grid.ColumnDefinitions>
+            <Border Style="{StaticResource Card}" Padding="16,12" Margin="0,0,10,0">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource Label}" Text="ISSUES"/>
+                    <TextBlock x:Name="statTotal" Text="0" FontSize="28" FontWeight="Bold" Margin="0,2,0,0"/>
+                    <TextBlock x:Name="statFiles" Text="No results open" Foreground="#8A9BB3" FontSize="11.5"/>
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Style="{StaticResource Card}" Padding="16,12" Margin="0,0,10,0">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource Label}" Text="OPEN"/>
+                    <TextBlock x:Name="statOpen" Text="0" FontSize="28" FontWeight="Bold" Foreground="#F59E0B" Margin="0,2,0,0"/>
+                    <TextBlock x:Name="statCritical" Text="0 critical or high" Foreground="#8A9BB3" FontSize="11.5"/>
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="2" Style="{StaticResource Card}" Padding="16,12" Margin="0,0,10,0">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource Label}" Text="RESOLVED"/>
+                    <TextBlock x:Name="statResolved" Text="0%" FontSize="28" FontWeight="Bold" Foreground="#22C55E" Margin="0,2,0,0"/>
+                    <Grid Height="5" Margin="0,6,0,0">
+                        <Border Background="#16243A" CornerRadius="3"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition x:Name="colResolved" Width="0*"/>
+                                <ColumnDefinition x:Name="colUnresolved" Width="1*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Background="#22C55E" CornerRadius="3"/>
+                        </Grid>
+                    </Grid>
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="3" Style="{StaticResource Card}" Padding="16,12" Margin="0,0,10,0">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource Label}" Text="FOUND IN MODEL"/>
+                    <TextBlock x:Name="statFound" Text="–" FontSize="28" FontWeight="Bold" Foreground="#00A0E3" Margin="0,2,0,0"/>
+                    <TextBlock x:Name="statFoundSub" Text="Run “Check against model”" Foreground="#8A9BB3" FontSize="11.5"/>
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="4" Style="{StaticResource Card}" Padding="16,12">
+                <StackPanel>
+                    <Grid>
+                        <TextBlock Style="{StaticResource Label}" Text="OPEN ISSUES"/>
+                        <StackPanel x:Name="spSeverityKey" Orientation="Horizontal" HorizontalAlignment="Right"/>
+                    </Grid>
+                    <Grid x:Name="gridSeverity" Height="8" Margin="0,8,0,8"/>
+                    <WrapPanel x:Name="wpAudits" ToolTip="Click an audit to show only its issues"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Body -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="430" MinWidth="340"/>
+                <ColumnDefinition Width="14"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Issue list -->
+            <Border Style="{StaticResource Card}" Padding="14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBox x:Name="tbSearch" ToolTip="Search titles, fields, families, types, element ids"/>
+                    <TextBlock x:Name="tbSearchHint" Text="Search issues, fields, families, element ids…" Foreground="#5D6F88"
+                               IsHitTestVisible="False" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    <Grid Grid.Row="1" Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="6"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="cbConsultant"/>
+                        <ComboBox x:Name="cbSeverity" Grid.Column="2"/>
+                    </Grid>
+                    <Grid Grid.Row="2" Margin="0,6,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="6"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="cbReview"/>
+                        <ComboBox x:Name="cbSort" Grid.Column="2"/>
+                    </Grid>
+                    <Grid Grid.Row="3">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid Margin="0,0,0,6">
+                            <TextBlock x:Name="txtCount" Style="{StaticResource Label}" Text="0 ISSUES"/>
+                            <TextBlock x:Name="btnClearFilters" Text="Clear filters" Foreground="#00A0E3" FontSize="11.5"
+                                       HorizontalAlignment="Right" Cursor="Hand"/>
+                        </Grid>
+                        <ListBox x:Name="lbIssues" Grid.Row="1" Background="Transparent" BorderThickness="0" SelectionMode="Extended"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingStackPanel.IsVirtualizing="True"
+                                 VirtualizingStackPanel.VirtualizationMode="Recycling"/>
+                        <StackPanel x:Name="pnlNoFiles" Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="20">
+                            <TextBlock Text="No issues loaded" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                            <TextBlock TextWrapping="Wrap" TextAlignment="Center" Foreground="#8A9BB3" Margin="0,6,0,0" MaxWidth="300"
+                                       Text="Click Browse BIMPulse to open a saved audit's issues."/>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- Detail -->
+            <Border Grid.Column="2" Style="{StaticResource Card}">
+                <Grid>
+                    <StackPanel x:Name="pnlEmpty" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock Text="Select an issue" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Its details, snapshot and elements show here." Foreground="#8A9BB3" Margin="0,6,0,0"/>
+                    </StackPanel>
+                    <Grid x:Name="pnlDetail" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="22,18,16,10">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <Border x:Name="bdSeverity" CornerRadius="10" Padding="9,3" Margin="0,0,6,0">
+                                        <TextBlock x:Name="txtSeverity" FontFamily="{StaticResource Mono}" FontSize="10.5" FontWeight="Bold"/>
+                                    </Border>
+                                    <Border x:Name="bdReview" CornerRadius="10" Padding="9,3" Margin="0,0,6,0">
+                                        <TextBlock x:Name="txtReview" FontFamily="{StaticResource Mono}" FontSize="10.5" FontWeight="Bold"/>
+                                    </Border>
+                                    <TextBlock x:Name="txtMeta" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                </StackPanel>
+                                <TextBlock x:Name="txtTitle" FontSize="19" FontWeight="Bold" TextWrapping="Wrap" Margin="0,10,0,0"/>
+                                <TextBlock x:Name="txtSub" Foreground="#8A9BB3" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                <TextBlock x:Name="txtDescription" TextWrapping="Wrap" Margin="0,12,0,0" Foreground="#C9D6E6"
+                                           LineHeight="19"/>
+
+                                <Grid Margin="0,16,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,16,0">
+                                        <TextBlock Style="{StaticResource Label}" Text="WHAT FAILED"/>
+                                        <StackPanel x:Name="spFailures" Margin="0,6,0,0"/>
+                                        <Border x:Name="pnlFix" Margin="0,12,0,0" Visibility="Collapsed" BorderBrush="#00A0E3"
+                                                BorderThickness="3,0,0,0" Padding="12,2,0,2">
+                                            <StackPanel>
+                                                <TextBlock Text="Fix it in the model" Foreground="#00A0E3" FontSize="15" FontWeight="Bold"/>
+                                                <TextBlock Foreground="#8A9BB3" FontSize="11.5" TextWrapping="Wrap" Margin="0,3,0,8"
+                                                           Text="Sets the value on this issue's elements in the open model (one undoable change)."/>
+                                                <StackPanel x:Name="spFix"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                    <Border x:Name="bdSnapshot" Grid.Column="1" CornerRadius="10" BorderBrush="#1C2B40" BorderThickness="1"
+                                            Background="#081221" Width="300" Height="200" ClipToBounds="True" Visibility="Collapsed" Cursor="Hand"
+                                            ToolTip="Click to open full size">
+                                        <Image x:Name="imgSnapshot" Stretch="UniformToFill"/>
+                                    </Border>
+                                </Grid>
+
+                                <Grid Margin="0,18,0,6">
+                                    <TextBlock x:Name="txtElementsLabel" Style="{StaticResource Label}" Text="ELEMENTS"/>
+                                    <TextBlock x:Name="txtModelCheck" FontSize="11.5" HorizontalAlignment="Right"/>
+                                </Grid>
+                                <StackPanel x:Name="spElements"/>
+
+                                <StackPanel x:Name="pnlComments" Margin="0,14,0,0" Visibility="Collapsed">
+                                    <TextBlock Style="{StaticResource Label}" Text="COMMENTS IN THE BCF"/>
+                                    <StackPanel x:Name="spComments" Margin="0,6,0,0"/>
+                                </StackPanel>
+
+                                <StackPanel x:Name="pnlAssign" Margin="0,16,0,0" Visibility="Collapsed">
+                                    <TextBlock Style="{StaticResource Label}" Text="ASSIGNED TO"/>
+                                    <Grid Margin="0,6,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <ComboBox x:Name="cbAssignee" ToolTip="Who should fix it"/>
+                                        <DatePicker x:Name="dpDue" Grid.Column="1" Width="140" Margin="8,0,0,0" ToolTip="Due date"
+                                                    SelectedDateFormat="Short"/>
+                                        <Button x:Name="btnAssign" Grid.Column="2" Content="Save" Margin="8,0,0,0" Padding="14,5"/>
+                                    </Grid>
+                                    <TextBlock x:Name="txtAssign" Foreground="#8A9BB3" FontSize="11.5" Margin="0,5,0,0" TextWrapping="Wrap"/>
+                                </StackPanel>
+
+                                <StackPanel x:Name="pnlThread" Margin="0,16,0,0" Visibility="Collapsed">
+                                    <Grid>
+                                        <TextBlock Style="{StaticResource Label}" Text="CONVERSATION · LIVE WITH BIMPULSE"/>
+                                        <TextBlock x:Name="txtThreadState" Foreground="#5D6F88" FontSize="11" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                    <StackPanel x:Name="spThread" Margin="0,6,0,0"/>
+                                </StackPanel>
+
+                                <TextBlock x:Name="lblNote" Style="{StaticResource Label}" Text="YOUR NOTE" Margin="0,16,0,6"/>
+                                <TextBox x:Name="tbNote" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="56" MaxHeight="120"
+                                         VerticalScrollBarVisibility="Auto"/>
+                                <Grid Margin="0,6,0,0">
+                                    <TextBlock x:Name="txtReviewedBy" Foreground="#5D6F88" FontSize="11.5" VerticalAlignment="Center"
+                                               TextWrapping="Wrap" Margin="0,0,210,0"/>
+                                    <CheckBox x:Name="chkSnapshot" Content="Attach this view" HorizontalAlignment="Right"
+                                              VerticalAlignment="Center" Margin="0,0,86,0" Visibility="Collapsed"
+                                              ToolTip="Send a picture of the active Revit view with the comment"/>
+                                    <Button x:Name="btnSend" Style="{StaticResource Primary}" Content="Send" HorizontalAlignment="Right"
+                                            Padding="16,5" Visibility="Collapsed" ToolTip="Send to BIMPulse (Ctrl+Enter)"/>
+                                </Grid>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <!-- Actions -->
+                        <Border Grid.Row="1" BorderBrush="#1C2B40" BorderThickness="0,1,0,0" Padding="18,12">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <WrapPanel>
+                                    <Button x:Name="btnZoom" Style="{StaticResource Primary}" Content="Select &amp; zoom" Margin="0,0,8,6"/>
+                                    <Button x:Name="btn3D" Content="Show in 3D" Margin="0,0,8,6"
+                                            ToolTip="Opens the 'BIMPulse Issues 3D' view with a section box around the elements"/>
+                                    <Button x:Name="btnIsolate" Content="Isolate" Margin="0,0,8,6" ToolTip="Temporarily isolate in the active view"/>
+                                    <Button x:Name="btnSelect" Content="Select only" Margin="0,0,8,6"/>
+                                    <Button x:Name="btnProps" Content="Copy ids" Margin="0,0,8,6" ToolTip="Copy the element ids to the clipboard"/>
+                                </WrapPanel>
+                                <Grid Grid.Row="1" Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="btnResolve" Content="Mark resolved" Margin="0,0,8,0" Foreground="#22C55E"/>
+                                        <Button x:Name="btnIgnore" Content="Ignore" Margin="0,0,8,0"/>
+                                        <Button x:Name="btnReopen" Content="Reopen" Margin="0,0,8,0"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <CheckBox x:Name="chkAuto" Content="Zoom as I browse" IsChecked="False" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                        <Button x:Name="btnPrev" Style="{StaticResource Ghost}" Content="‹ Prev" Margin="0,0,6,0" ToolTip="Previous issue (Ctrl+Up)"/>
+                                        <Button x:Name="btnNext" Style="{StaticResource Ghost}" Content="Next ›" ToolTip="Next issue (Ctrl+Down)"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- BIMPulse browser (over the dashboard) -->
+        <Grid x:Name="pnlBrowse" Grid.Row="1" Grid.RowSpan="2" Background="#050B14" Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="360"/>
+                <ColumnDefinition Width="14"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Border Style="{StaticResource Card}" Padding="14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid Margin="0,0,0,10">
+                        <TextBlock Style="{StaticResource Label}" Text="YOUR PROJECTS" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="txtOrg" Foreground="#8A9BB3" FontSize="11.5" HorizontalAlignment="Right"
+                                   TextTrimming="CharacterEllipsis" MaxWidth="200"/>
+                    </Grid>
+                    <Grid Grid.Row="1" Margin="0,0,0,10">
+                        <TextBox x:Name="tbProjectSearch"/>
+                        <TextBlock x:Name="tbProjectHint" Text="Search projects…" Foreground="#5D6F88" IsHitTestVisible="False"
+                                   Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </Grid>
+                    <ListBox x:Name="lbProjects" Grid.Row="2" Background="Transparent" BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+                </Grid>
+            </Border>
+            <Border Grid.Column="2" Style="{StaticResource Card}" Padding="22,18">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource Label}" Text="SAVED AUDIT"/>
+                            <TextBlock x:Name="txtBrowseProject" Text="Choose a project" FontSize="19" FontWeight="Bold" Margin="0,2,0,0"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+                        <ComboBox x:Name="cbRevision" Grid.Column="1" Width="300" VerticalAlignment="Bottom"/>
+                    </Grid>
+                    <Grid Grid.Row="1" Margin="0,16,0,8">
+                        <TextBlock Style="{StaticResource Label}" Text="RESULTS · TICK THE ONES TO OPEN"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <TextBlock x:Name="btnSelectAll" Text="Select all" Foreground="#00A0E3" FontSize="11.5" Cursor="Hand" Margin="0,0,14,0"/>
+                            <TextBlock x:Name="btnSelectNone" Text="None" Foreground="#00A0E3" FontSize="11.5" Cursor="Hand"/>
+                        </StackPanel>
+                    </Grid>
+                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="spResults"/>
+                    </ScrollViewer>
+                    <Grid Grid.Row="3" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="txtBrowseNote" Foreground="#8A9BB3" FontSize="11.5" TextWrapping="Wrap" VerticalAlignment="Center"
+                                   Margin="0,0,12,0"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <Button x:Name="btnBrowseClose" Content="Back to issues" Margin="0,0,8,0"/>
+                            <Button x:Name="btnBrowseOpen" Style="{StaticResource Primary}" Content="Open issues"/>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Status bar -->
+        <Grid Grid.Row="3" Margin="2,10,2,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="txtStatus" Foreground="#8A9BB3" FontSize="11.5" TextTrimming="CharacterEllipsis"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button x:Name="btnColour" Style="{StaticResource Ghost}" Content="Colour issues in view" Margin="0,0,6,0"
+                        ToolTip="Colour every open issue's elements in the active view by severity"/>
+                <Button x:Name="btnClear" Style="{StaticResource Ghost}" Content="Clear colours &amp; isolation"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

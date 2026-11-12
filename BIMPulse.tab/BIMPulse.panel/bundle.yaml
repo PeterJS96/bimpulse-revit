@@ -1,0 +1,5 @@
+title: BIMPulse
+layout:
+  - Dashboard
+  - DataExporter
+  - GeoLevelsExporter

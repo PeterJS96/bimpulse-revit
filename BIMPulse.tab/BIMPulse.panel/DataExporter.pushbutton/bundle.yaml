@@ -1,0 +1,6 @@
+title: "Data\nExporter"
+tooltip: >-
+  Exports this model's data for a BIMPulse audit: Model Health (warnings, CAD imports,
+  in-place families) as JSON, and Object Naming and Uniclass schedules as CSV. Choose a
+  folder; its path is copied so you can upload the files in BIMPulse.
+author: Whitecode Consulting

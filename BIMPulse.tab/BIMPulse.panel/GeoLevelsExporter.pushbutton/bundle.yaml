@@ -1,0 +1,6 @@
+title: "Geo & Levels\nExporter"
+tooltip: >-
+  Compares this model's Project Base Point (coordinates and angle) and levels with a
+  linked model, shows what matches, and exports the JSON for BIMPulse's Geolocation &
+  Levels audit.
+author: Whitecode Consulting
