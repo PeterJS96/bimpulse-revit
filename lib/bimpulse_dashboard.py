@@ -2165,7 +2165,7 @@ class Dashboard(object):
         if req.get("viewpoint"):
             self.goto_viewpoint(req["viewpoint"])
         elif t.elements:
-            self.act("zoom")
+            self.act("3d" if req.get("action") == "3d" else "zoom")
         self.status(u"Opened from BIMPulse: {}".format(t.title))
 
     # ---------- error reports ----------
