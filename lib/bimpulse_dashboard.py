@@ -286,6 +286,9 @@ class Dashboard(object):
         self.outbox = cloud.Outbox()  # changes made offline, sent when BIMPulse can be reached
         self.flushing = False
         self.fixed = {}  # topic key -> fields fixed in the model this session
+        self.last_fix = None  # what the last fix changed, for "Undo fix"
+        self.selection = None  # (element ids, unique ids) when showing only the selection's issues
+        self._selection_handler = None
         self.images = {}  # attachment path -> PNG/JPEG bytes
         self._assignee_ids = [None]  # cbAssignee's people, by position
         self.polling = False
@@ -343,6 +346,8 @@ class Dashboard(object):
         self.btnSend.Click += lambda s, a: self.send_comment()
         self.btnAssign.Click += self.on_assign
         self.btnMenu.Click += self.on_menu
+        self.btnUndoFix.Click += lambda s, a: self.undo_fix()
+        self.btnSelection.MouseLeftButtonUp += lambda s, a: self.toggle_selection()
         self.btnUpdateNow.Click += lambda s, a: self.update_now()
         self.btnUpdateLater.Click += lambda s, a: self.update_later()
         self.btnTourNext.Click += lambda s, a: self.show_tour_step(self.tour_step + 1)
@@ -651,6 +656,8 @@ class Dashboard(object):
             if self.cbReview.SelectedIndex == 5 and not cloud.is_overdue(t, today):
                 continue
             if query and not all(w in t.search_text() for w in query.split()):
+                continue
+            if self.selection is not None and not plug.in_selection(t, *self.selection):
                 continue
             out.append(t)
         sort = self.cbSort.SelectedIndex
@@ -1278,7 +1285,8 @@ class Dashboard(object):
             if not res.hits:
                 self.status("None of this issue's elements are in this model. Is this the right model?", error=True)
                 return
-            changed, problems = rv.apply_fix(uidoc.Document, res.hits, field, value)
+            record = []
+            changed, problems = rv.apply_fix(uidoc.Document, res.hits, field, value, record)
             finder.cache.pop(t.key, None)
             if not changed:
                 self.status(u"Nothing changed: {}".format("; ".join(problems[:3]) or "no element took the value"),
@@ -1293,6 +1301,9 @@ class Dashboard(object):
             all_done = fixable <= self.fixed[t.key] and not problems
             done_text = u"{} set to \u201c{}\u201d on {} element{}".format(
                 field, value, changed, "" if changed == 1 else "s")
+            resolving = bool(t.source and t.source.cloud and self.session is not None and all_done
+                             and t.review == bcf.OPEN)
+            self.remember_fix(uidoc.Document, record, field, value, [t], [t] if resolving else [])
             if t.source and t.source.cloud and self.session is not None:
                 if all_done and t.review == bcf.OPEN:
                     t.review = bcf.RESOLVED
@@ -1334,7 +1345,8 @@ class Dashboard(object):
             if not groups:
                 self.status("None of these issues' elements are in this model. Is this the right model?", error=True)
                 return
-            changed, problems = rv.apply_fix_many(uidoc.Document, groups, field, value)
+            record = []
+            changed, problems = rv.apply_fix_many(uidoc.Document, groups, field, value, record)
             fixed = [x for x in group if changed.get(x.key)]
             for x in group:
                 finder.cache.pop(x.key, None)
@@ -1351,6 +1363,8 @@ class Dashboard(object):
             if problems:
                 msg += u" Not changed: {}".format("; ".join(problems[:2]))
             online = [x for x in done if x.source and x.source.cloud and x.issue_key]
+            self.remember_fix(uidoc.Document, record, field, value, fixed,
+                              online if self.session is not None else [])
             if online and self.session is not None:
                 note = u"Fixed in Revit: {} set to \u201c{}\u201d (with {} similar issue{}).".format(
                     field, value, len(fixed) - 1, "" if len(fixed) == 2 else "s")
@@ -1369,6 +1383,108 @@ class Dashboard(object):
                 self.announce("BIMPulse: fixed", msg)
             self.refresh(keep=t)
         self.run(job)
+
+    # ---------- undo the last fix ----------
+
+    def remember_fix(self, doc, record, field, value, topics, resolved):
+        """Keeps what a fix changed so "Undo fix" (or Ctrl+Z here) can put it back."""
+        if not record:
+            return
+        self.last_fix = {"doc": doc.PathName or doc.Title, "record": record, "field": field, "value": value,
+                         "topics": topics, "resolved": resolved}
+        self.btnUndoFix.Visibility = Visibility.Visible
+        self.btnUndoFix.ToolTip = u"Put {} back as it was on {} issue{} (Ctrl+Z)".format(
+            field, len(topics), "" if len(topics) == 1 else "s")
+
+    def undo_fix(self):
+        fix = self.last_fix
+        if fix is None:
+            return
+        n = len(fix["topics"])
+
+        def job(uidoc, finder):
+            doc = uidoc.Document
+            if (doc.PathName or doc.Title) != fix["doc"]:
+                self.status("That fix was made in another model: open it to undo the fix.", error=True)
+                return
+            restored, problems = rv.undo_fix(doc, fix["record"])
+            if not restored:
+                self.status(u"Could not undo the fix: {}".format("; ".join(problems[:3]) or "nothing to put back"),
+                            error=True)
+                return
+            self.last_fix = None
+            self.btnUndoFix.Visibility = Visibility.Collapsed
+            for t in fix["topics"]:
+                finder.cache.pop(t.key, None)
+                self.fixed.get(t.key, set()).discard(fix["field"])
+            note = u"Fix undone in Revit: {} put back to its previous value.".format(fix["field"])
+            reopen = [t for t in fix["resolved"] if t.review == bcf.RESOLVED]
+            logged = [t for t in fix["topics"] if t not in reopen and t.source and t.source.cloud and t.issue_key]
+            for t in reopen:
+                t.review = bcf.OPEN
+            if self.session is not None:
+                for audit_id, items in cloud.bulk_payload(reopen, bcf.OPEN, note).items():
+                    for body in items:
+                        self.send_or_keep("bulk", audit_id, body, lambda events: None, queued=self.refresh)
+                if len(logged) == 1:  # one issue: say so on it (many: the reopened ones carry the note)
+                    t = logged[0]
+                    self.send_or_keep("event", t.source.cloud["audit_id"], cloud.event_payload(t, "comment", body=note),
+                                      lambda events: None)
+            msg = u"Undone: {} put back on {} issue{}.".format(fix["field"], n, "" if n == 1 else "s")
+            if reopen:
+                msg += u" {} reopened in BIMPulse.".format(len(reopen))
+            if problems:
+                msg += u" Not put back: {}".format("; ".join(problems[:2]))
+            self.announce("BIMPulse: fix undone", msg)
+            self.refresh(keep=self.current)
+        self.run(job)
+
+    # ---------- the selection's issues ----------
+
+    def toggle_selection(self):
+        if self.selection is not None:
+            self.set_selection(None)
+            return
+        self.read_selection()
+        try:  # Revit 2023 and later: follow the selection as it changes
+            if self._selection_handler is None:
+                self._selection_handler = lambda s, a: self.selection is not None and self.read_selection_now()
+                HOST_APP.uiapp.SelectionChanged += self._selection_handler
+        except Exception:
+            self._selection_handler = None
+
+    def read_selection(self):
+        self.run(lambda uidoc, finder: self.read_selection_now(uidoc.Document, uidoc))
+
+    def read_selection_now(self, doc=None, uidoc=None):
+        """(In Revit's API context.) Shows only the issues of the elements selected in Revit."""
+        uidoc = uidoc or HOST_APP.uiapp.ActiveUIDocument
+        if uidoc is None:
+            return
+        doc = uidoc.Document
+        ids, uniques = set(), set()
+        for eid in uidoc.Selection.GetElementIds():
+            ids.add(str(rv.id_value(eid)))
+            el = doc.GetElement(eid)
+            if el is not None:
+                uniques.add(el.UniqueId)
+        if not ids:
+            self.set_selection(None)
+            self.status("Select elements in Revit first, then click 'For selection' (it follows the selection "
+                        "in Revit 2023 and later).")
+            return
+        self.set_selection((ids, uniques))
+
+    def set_selection(self, selection):
+        self.selection = selection
+        on = selection is not None
+        self.btnSelection.Text = u"For selection \u2713" if on else "For selection"
+        self.btnSelection.FontWeight = FontWeights.Bold if on else FontWeights.Normal
+        self.refresh(keep=self.current)
+        if on:
+            n = len(self.filtered())
+            self.status(u"{} issue{} for the {} selected element{}. Click 'For selection' again to show all.".format(
+                n, "" if n == 1 else "s", len(selection[0]), "" if len(selection[0]) == 1 else "s"))
 
     def poll_activity(self):
         """Fetches new comments and statuses from BIMPulse (the Issues page) for the open audits."""
@@ -1787,6 +1903,11 @@ class Dashboard(object):
     def on_closed(self, sender, args):
         self.timer.Stop()
         self.requests.Stop()
+        if self._selection_handler is not None:
+            try:
+                HOST_APP.uiapp.SelectionChanged -= self._selection_handler
+            except Exception:
+                pass
         if self._theme_handler is not None:
             try:
                 HOST_APP.uiapp.ThemeChanged -= self._theme_handler
@@ -2408,6 +2529,9 @@ class Dashboard(object):
 
     def on_clear_filters(self, sender, args):
         self.audit_filter = None
+        self.selection = None
+        self.btnSelection.Text = "For selection"
+        self.btnSelection.FontWeight = FontWeights.Normal
         self.tbSearch.Text = ""
         for cb in (self.cbConsultant, self.cbSeverity, self.cbSort):
             cb.SelectedIndex = 0
@@ -2429,6 +2553,11 @@ class Dashboard(object):
             self.step(1 if args.Key == Key.Down else -1)
             args.Handled = True
             return
+        if mods == ModifierKeys.Control and args.Key == Key.Z and self.last_fix is not None \
+                and not isinstance(Keyboard.FocusedElement, TextBox):
+            self.undo_fix()
+            args.Handled = True
+            return
         if mods == ModifierKeys.Control and args.Key == Key.F:
             self.show_browse(False)
             self.tbSearch.Focus()
@@ -2440,6 +2569,10 @@ class Dashboard(object):
                 or self.pnlBrowse.Visibility == Visibility.Visible or self.tour_step is not None:
             return
         key = str(args.Key)
+        if key == "E":
+            self.toggle_selection()
+            args.Handled = True
+            return
         if key in ("J", "K"):
             self.step(1 if key == "J" else -1)
             args.Handled = True
@@ -2458,6 +2591,7 @@ class Dashboard(object):
     def show_shortcuts(self):
         rows = [u"{}\t{}".format(k, what) for k, _, what in SHORTCUTS]
         rows += [u"J / K\tNext / previous issue (also Ctrl+Down / Ctrl+Up)", u"Ctrl+F\tSearch issues",
+                 u"Ctrl+Z\tUndo the last fix", u"E\tIssues for the elements selected in Revit",
                  u"Ctrl+Enter\tSend the comment", u"F1 or ?\tThis list"]
         forms.alert(u"Keyboard shortcuts (when you're not typing in a box):\n\n" + u"\n".join(rows),
                     title="BIMPulse Dashboard")

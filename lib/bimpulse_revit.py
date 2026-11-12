@@ -533,10 +533,23 @@ def _set_value(p, value):
     raise ValueError("can't be set from text")
 
 
-def apply_fix(doc, hits, field, value):
+def _old_value(p):
+    """A parameter's value as stored, to put back later: (storage kind, value)."""
+    kind = str(p.StorageType)
+    if kind == "String":
+        return kind, p.AsString()
+    if kind == "Integer":
+        return kind, p.AsInteger()
+    if kind == "Double":
+        return kind, p.AsDouble()
+    return kind, None
+
+
+def apply_fix(doc, hits, field, value, record=None):
     """Sets a failed field on the issue's elements in the host model: a parameter (on the
     element or its type), or for Object Naming the type or family name. One undoable
-    transaction. Returns (changed, problems)."""
+    transaction. Returns (changed, problems). `record` (a list) gets what each change replaced,
+    for undo_fix."""
     changed, problems, done = 0, [], set()
     host = [h.element for h in hits if not h.link]
     if len(host) < len(hits):
@@ -558,6 +571,8 @@ def apply_fix(doc, hits, field, value):
                     if key in done:
                         continue
                     done.add(key)
+                    if record is not None:
+                        record.append(("name", key, None, None, name_of(target)))
                     target.Name = value
                     changed += 1
                     continue
@@ -574,9 +589,12 @@ def apply_fix(doc, hits, field, value):
                 if key in done:  # a type parameter shared by several elements
                     continue
                 done.add(key)
+                old = _old_value(p)
                 if _set_value(p, value) is False:
                     problems.append(u"{}: Revit did not accept the value".format(id_value(el.Id)))
                     continue
+                if record is not None:
+                    record.append(("param", id_value(owner.Id), p.Definition.Name, old[0], old[1]))
                 changed += 1
             except Exception as e:
                 problems.append(u"{}: {}".format(id_value(el.Id), e))
@@ -725,7 +743,7 @@ def restore_viewpoint(uidoc, vp):
     return name_of(view)
 
 
-def apply_fix_many(doc, groups, field, value):
+def apply_fix_many(doc, groups, field, value, record=None):
     """apply_fix for several issues' elements in one undoable change: `groups` is
     [(key, hits)]. Returns ({key: changed}, problems)."""
     tx_name = u"BIMPulse: set {} on {} issues".format(field, len(groups))
@@ -735,7 +753,7 @@ def apply_fix_many(doc, groups, field, value):
     changed, problems = {}, []
     try:
         for key, hits in groups:
-            n, p = apply_fix(doc, hits, field, value)
+            n, p = apply_fix(doc, hits, field, value, record)
             changed[key] = n
             problems.extend(p)
         if any(changed.values()):
@@ -746,3 +764,37 @@ def apply_fix_many(doc, groups, field, value):
         tg.RollBack()
         raise
     return changed, problems
+
+
+def undo_fix(doc, record):
+    """Puts back what apply_fix changed (its `record`), newest first, as one undoable change.
+    Returns (restored, problems)."""
+    restored, problems = 0, []
+    tx = Transaction(doc, "BIMPulse: undo fix")
+    tx.Start()
+    try:
+        for what, owner_id, name, kind, old in reversed(record):
+            el = doc.GetElement(make_id(owner_id))
+            if el is None:
+                problems.append(u"{}: no longer in the model".format(owner_id))
+                continue
+            try:
+                if what == "name":
+                    el.Name = old
+                else:
+                    p = el.LookupParameter(name)
+                    if p is None or p.IsReadOnly or kind not in ("String", "Integer", "Double"):
+                        problems.append(u"{}: '{}' can't be put back".format(owner_id, name))
+                        continue
+                    p.Set(old if old is not None else "") if kind == "String" else p.Set(old)
+                restored += 1
+            except Exception as e:
+                problems.append(u"{}: {}".format(owner_id, e))
+        if restored:
+            tx.Commit()
+        else:
+            tx.RollBack()
+    except Exception:
+        tx.RollBack()
+        raise
+    return restored, problems

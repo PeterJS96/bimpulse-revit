@@ -171,8 +171,11 @@
                         </Grid.RowDefinitions>
                         <Grid Margin="0,0,0,6">
                             <TextBlock x:Name="txtCount" Style="{StaticResource Label}" Text="0 ISSUES"/>
-                            <TextBlock x:Name="btnClearFilters" Text="Clear filters" Foreground="#00A0E3" FontSize="11.5"
-                                       HorizontalAlignment="Right" Cursor="Hand"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <TextBlock x:Name="btnSelection" Text="For selection" Foreground="#00A0E3" FontSize="11.5" Cursor="Hand"
+                                           Margin="0,0,14,0" ToolTip="Show only the issues of the elements selected in Revit (E)"/>
+                                <TextBlock x:Name="btnClearFilters" Text="Clear filters" Foreground="#00A0E3" FontSize="11.5" Cursor="Hand"/>
+                            </StackPanel>
                         </Grid>
                         <ListBox x:Name="lbIssues" Grid.Row="1" Background="Transparent" BorderThickness="0" SelectionMode="Extended"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingStackPanel.IsVirtualizing="True"
@@ -409,6 +412,7 @@
             </Grid.ColumnDefinitions>
             <TextBlock x:Name="txtStatus" Foreground="#8A9BB3" FontSize="11.5" TextTrimming="CharacterEllipsis"/>
             <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button x:Name="btnUndoFix" Content="Undo fix" Margin="0,0,10,0" Visibility="Collapsed" Foreground="#F59E0B"/>
                 <Button x:Name="btnColour" Style="{StaticResource Ghost}" Content="Colour issues in view" Margin="0,0,6,0"
                         ToolTip="Colour every open issue's elements in the active view by severity"/>
                 <Button x:Name="btnClear" Style="{StaticResource Ghost}" Content="Clear colours &amp; isolation"/>

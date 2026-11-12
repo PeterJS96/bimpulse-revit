@@ -147,3 +147,15 @@ def swap_map(old, new):
         back.setdefault(light, dark)
     back["#FFFFFF"] = "#0B1626"  # white was cards (and text on blue): back to cards
     return back
+
+
+def in_selection(topic, ids, unique_ids):
+    """Whether one of the issue's elements is selected in Revit: by its unique id when the issue
+    has one (safe across models), else by its element id."""
+    for e in topic.elements:
+        if e.get("unique_id"):
+            if e["unique_id"] in unique_ids:
+                return True
+        elif e.get("element_id") and str(e["element_id"]) in ids:
+            return True
+    return False
