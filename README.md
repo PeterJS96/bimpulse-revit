@@ -20,6 +20,12 @@ to Revit with three tools:
    pyrevit extend ui BIMPulseTools https://github.com/PeterJS96/bimpulse-revit.git
    ```
 
+   If it says `'pyrevit' is not recognized` (pyRevit installed for your user only), run:
+
+   ```
+   "%APPDATA%\pyRevit-Master\bin\pyrevit.exe" extend ui BIMPulseTools https://github.com/PeterJS96/bimpulse-revit.git
+   ```
+
    Or in Revit: **pyRevit › Extensions**, and install an extension from that address.
 3. Open Revit (or click **pyRevit › Reload**). The **BIMPulse** tab appears.
 
