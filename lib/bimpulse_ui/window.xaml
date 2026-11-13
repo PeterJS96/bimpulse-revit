@@ -2,11 +2,39 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="BIMPulse Dashboard" Width="1320" Height="840" MinWidth="1040" MinHeight="620"
         WindowStartupLocation="CenterScreen" Background="#050B14" Foreground="#E6EEF7"
-        FontFamily="Segoe UI" FontSize="13" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+        FontFamily="BIMPULSE:FONT" FontSize="13" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
     <Window.Resources>
 <!--BIMPULSE:STYLES-->
     </Window.Resources>
+    <!-- BIMPulse's own frame: the title bar is drawn here (Windows still moves, snaps and resizes it) -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome x:Name="chrome" CaptionHeight="40" ResizeBorderThickness="6" GlassFrameThickness="0"
+                      CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
 
+    <Grid x:Name="frameGrid">
+    <Grid.RowDefinitions>
+        <RowDefinition Height="40"/>
+        <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+    <Grid x:Name="titleBar" Background="#050B14">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+            <Image Source="BIMPULSE:LOGO" Height="18" Margin="0,0,10,0" RenderOptions.BitmapScalingMode="HighQuality"/>
+            <TextBlock x:Name="txtWindowTitle" Text="BIMPulse Dashboard" FontSize="12" FontWeight="Medium"
+                       Foreground="#8A9BB3" VerticalAlignment="Center"/>
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
+            <Button x:Name="btnWinMin" Style="{StaticResource Caption}" Content="&#xE921;" ToolTip="Minimise"/>
+            <Button x:Name="btnWinMax" Style="{StaticResource Caption}" Content="&#xE922;" ToolTip="Maximise"/>
+            <Button x:Name="btnWinClose" Style="{StaticResource CaptionClose}" Content="&#xE8BB;" ToolTip="Close"/>
+        </StackPanel>
+        <Border VerticalAlignment="Bottom" Height="1" Background="#1C2B40"/>
+    </Grid>
+    <Border x:Name="bdBody" Grid.Row="1" Background="#050B14">
     <Grid x:Name="rootGrid">
     <Grid Margin="20,16,20,12">
         <Grid.RowDefinitions>
@@ -46,6 +74,8 @@
                                    TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
                 </Button>
+                <Button x:Name="btnCommand" Style="{StaticResource Ghost}" Content="Search" Margin="0,0,6,0"
+                        ToolTip="Find any issue, project or action (Ctrl+K)"/>
                 <Button x:Name="btnMenu" Style="{StaticResource Ghost}" Content="&#x22EF;" FontSize="16" Padding="10,2"
                         ToolTip="Theme, docking, error reports, updates and the tour"/>
             </StackPanel>
@@ -92,10 +122,17 @@
                 </StackPanel>
             </Border>
             <Border Grid.Column="2" Style="{StaticResource Card}" Padding="16,12" Margin="0,0,10,0">
-                <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid x:Name="gridRing" Width="58" Height="58" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
                     <TextBlock Style="{StaticResource Label}" Text="RESOLVED"/>
                     <TextBlock x:Name="statResolved" Text="0%" FontSize="28" FontWeight="Bold" Foreground="#22C55E" Margin="0,2,0,0"/>
-                    <Grid Height="5" Margin="0,6,0,0">
+                    <TextBlock x:Name="txtScore" Foreground="#8A9BB3" FontSize="11.5" TextTrimming="CharacterEllipsis"/>
+                    <Grid Height="5" Margin="0,6,0,0" Visibility="Collapsed">
                         <Border Background="#16243A" CornerRadius="3"/>
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -105,7 +142,8 @@
                             <Border Background="#22C55E" CornerRadius="3"/>
                         </Grid>
                     </Grid>
-                </StackPanel>
+                    </StackPanel>
+                </Grid>
             </Border>
             <Border Grid.Column="3" Style="{StaticResource Card}" Padding="16,12" Margin="0,0,10,0">
                 <StackPanel>
@@ -122,6 +160,7 @@
                     </Grid>
                     <Grid x:Name="gridSeverity" Height="8" Margin="0,8,0,8"/>
                     <WrapPanel x:Name="wpAudits" ToolTip="Click an audit to show only its issues"/>
+                    <WrapPanel x:Name="spChanged" Visibility="Collapsed" Margin="0,2,0,0"/>
                 </StackPanel>
             </Border>
         </Grid>
@@ -180,10 +219,17 @@
                         <ListBox x:Name="lbIssues" Grid.Row="1" Background="Transparent" BorderThickness="0" SelectionMode="Extended"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingStackPanel.IsVirtualizing="True"
                                  VirtualizingStackPanel.VirtualizationMode="Recycling"/>
-                        <StackPanel x:Name="pnlNoFiles" Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="20">
-                            <TextBlock Text="No issues loaded" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-                            <TextBlock TextWrapping="Wrap" TextAlignment="Center" Foreground="#8A9BB3" Margin="0,6,0,0" MaxWidth="300"
-                                       Text="Click Browse BIMPulse to open a saved audit's issues."/>
+                        <StackPanel x:Name="spLoading" Grid.Row="1" Visibility="Collapsed"/>
+                        <StackPanel x:Name="pnlNoFiles" Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="20" MaxWidth="320">
+                            <Border Width="56" Height="56" CornerRadius="28" Background="#14304D" HorizontalAlignment="Center">
+                                <TextBlock x:Name="pnlNoFilesIcon" Text="&#xE838;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="22" Foreground="#00A0E3"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <TextBlock x:Name="pnlNoFilesTitle" Text="No issues open yet" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,14,0,0"
+                                       TextAlignment="Center" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="pnlNoFilesBody" Text="Open a saved audit from BIMPulse to see its issues here." Foreground="#8A9BB3" Margin="0,6,0,0" TextWrapping="Wrap" TextAlignment="Center"
+                                       LineHeight="19"/>
+                            <Button x:Name="pnlNoFilesAction" Style="{StaticResource Primary}" Content="Browse BIMPulse" HorizontalAlignment="Center" Margin="0,14,0,0" Padding="14,6"/>
                         </StackPanel>
                     </Grid>
                 </Grid>
@@ -192,9 +238,25 @@
             <!-- Detail -->
             <Border x:Name="cardDetail" Grid.Column="2" Style="{StaticResource Card}">
                 <Grid>
-                    <StackPanel x:Name="pnlEmpty" VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock Text="Select an issue" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-                        <TextBlock Text="Its details, snapshot and elements show here." Foreground="#8A9BB3" Margin="0,6,0,0"/>
+<ScrollViewer x:Name="pnlWins" VerticalScrollBarVisibility="Auto" Visibility="Collapsed" Padding="22,18,16,12">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource Label}" Text="BIGGEST WINS &#xB7; FIX THESE FIRST"/>
+                            <TextBlock x:Name="txtWinsSub" Foreground="#8A9BB3" FontSize="11.5" Margin="0,4,0,10" TextWrapping="Wrap"
+                                       Text="The few changes that clear the most open issues. Click one to start."/>
+                            <StackPanel x:Name="spWins"/>
+                            <TextBlock Foreground="#5D6F88" FontSize="11.5" Margin="0,10,0,0" TextWrapping="Wrap"
+                                       Text="Or pick any issue in the list. Ctrl+K finds anything."/>
+                        </StackPanel>
+                    </ScrollViewer>
+                    <StackPanel x:Name="pnlEmpty" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="20" MaxWidth="320">
+                        <Border Width="56" Height="56" CornerRadius="28" Background="#14304D" HorizontalAlignment="Center">
+                            <TextBlock x:Name="pnlEmptyIcon" Text="&#xE8FD;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="22" Foreground="#00A0E3"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock x:Name="pnlEmptyTitle" Text="Select an issue" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,14,0,0"
+                                   TextAlignment="Center" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="pnlEmptyBody" Text="Its details, fixes and conversation show here. Press Ctrl+K to find any issue or action." Foreground="#8A9BB3" Margin="0,6,0,0" TextWrapping="Wrap" TextAlignment="Center"
+                                   LineHeight="19"/>
                     </StackPanel>
                     <Grid x:Name="pnlDetail" Visibility="Collapsed">
                         <Grid.RowDefinitions>
@@ -330,6 +392,25 @@
             </Border>
         </Grid>
 
+<!-- Start screen: recent projects (before any result is open) -->
+        <Grid x:Name="pnlStart" Grid.Row="2" Grid.RowSpan="2" Background="#050B14" Visibility="Collapsed" Margin="-4,0,-4,0">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="8,24,8,8" MaxWidth="980">
+                    <TextBlock Style="{StaticResource Label}" Text="BIMPULSE DASHBOARD"/>
+                    <TextBlock x:Name="txtStartTitle" Text="Welcome back" FontSize="26" FontWeight="Bold" Margin="0,4,0,0"
+                               TextWrapping="Wrap"/>
+                    <TextBlock x:Name="txtStartBody" Foreground="#8A9BB3" Margin="0,6,0,18" TextWrapping="Wrap"
+                               Text="Pick up where you left off, or open another saved audit."/>
+                    <TextBlock x:Name="lblRecent" Style="{StaticResource Label}" Text="RECENT" Margin="0,0,0,8"/>
+                    <WrapPanel x:Name="wpRecent"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <Button x:Name="btnStartBrowse" Style="{StaticResource Primary}" Content="Browse all projects" Margin="0,0,8,0"/>
+                        <Button x:Name="btnStartSignIn" Content="Sign in" Visibility="Collapsed"/>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
         <!-- BIMPulse browser (over the dashboard) -->
         <Grid x:Name="pnlBrowse" Grid.Row="2" Grid.RowSpan="2" Background="#050B14" Visibility="Collapsed">
             <Grid.ColumnDefinitions>
@@ -420,6 +501,27 @@
         </Grid>
     </Grid>
 
+
+    <!-- Command bar (Ctrl+K): find any issue, project or action -->
+    <Grid x:Name="pnlCommand" Visibility="Collapsed">
+        <Border x:Name="bdCommandDim" Background="#99020610"/>
+        <Border x:Name="bdCommand" Style="{StaticResource Card}" MaxWidth="580" HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                Margin="16,64,16,16" Padding="10" BorderBrush="#00A0E3">
+            <StackPanel>
+                <Grid>
+                    <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14" Foreground="#8A9BB3" VerticalAlignment="Center"
+                               Margin="10,0,0,0" IsHitTestVisible="False" Panel.ZIndex="1"/>
+                    <TextBox x:Name="tbCommand" FontSize="14" Padding="24,0,0,0"/>
+                    <TextBlock x:Name="tbCommandHint" Text="Search issues, projects and actions…" Foreground="#5D6F88" FontSize="14"
+                               IsHitTestVisible="False" Margin="42,0,0,0" VerticalAlignment="Center"/>
+                </Grid>
+                <ListBox x:Name="lbCommand" MaxHeight="400" Margin="0,8,0,0" Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+                <TextBlock Style="{StaticResource Label}" Margin="4,6,0,0" Text="&#x2191;&#x2193; MOVE  &#xB7;  ENTER RUN  &#xB7;  ESC CLOSE"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+
     <!-- First-run tour: dims everything but the spotlit control -->
     <Grid x:Name="pnlTour" Visibility="Collapsed">
         <Path x:Name="pathTourDim" Fill="#B3020610"/>
@@ -441,5 +543,7 @@
             </StackPanel>
         </Border>
     </Grid>
+    </Grid>
+    </Border>
     </Grid>
 </Window>

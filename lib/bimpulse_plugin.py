@@ -53,10 +53,12 @@ def colour(hex_colour, theme):
     return LIGHT.get(hex_colour.upper(), hex_colour)
 
 
-def themed_xaml(text, theme, styles="", logo=""):
-    """The window's XAML in the theme, with the shared styles put in for <!--BIMPULSE:STYLES-->
-    and the BIMPulse mark's file for BIMPULSE:LOGO."""
+def themed_xaml(text, theme, styles="", logo="", fonts=("Segoe UI", "Consolas")):
+    """The window's XAML in the theme, with the shared styles put in for <!--BIMPULSE:STYLES-->,
+    the BIMPulse mark's file for BIMPULSE:LOGO and the text and mono fonts (the website's Geist
+    and Geist Mono) for BIMPULSE:FONT and BIMPULSE:MONO."""
     text = text.replace("<!--BIMPULSE:STYLES-->", styles).replace("BIMPULSE:LOGO", logo)
+    text = text.replace("BIMPULSE:FONT", fonts[0]).replace("BIMPULSE:MONO", fonts[1])
     if theme != "light":
         return text
     return _HEX6.sub(lambda m: colour("#" + m.group(1), theme), text)
@@ -159,3 +161,70 @@ def in_selection(topic, ids, unique_ids):
         elif e.get("element_id") and str(e["element_id"]) in ids:
             return True
     return False
+
+
+# ------------------------------------------------------------------ health, biggest wins, recent
+
+def grade(score):
+    """BIMPulse's bands for a score (%): Green, Amber or Red."""
+    if score is None:
+        return ""
+    return "Green" if score >= 80 else ("Amber" if score >= 50 else "Red")
+
+
+def average(scores):
+    scores = [float(s) for s in scores if s is not None]
+    return int(round(sum(scores) / len(scores))) if scores else None
+
+
+def _what(topic):
+    e = topic.elements[0] if topic.elements else {}
+    return e.get("category") or topic.category or "elements"
+
+
+def biggest_wins(topics, not_fixable=(), limit=4):
+    """The few changes that clear the most open issues: the same value to set on the same kind of
+    element first, then the biggest groups of the same check. Each: {title, detail, keys, fix}."""
+    fixes, groups = {}, {}
+    for t in topics:
+        if t.review != "open":
+            continue
+        fixable = [f for f in t.failures if t.elements and "value" in f and f.get("field")
+                   and f["field"] not in not_fixable]
+        for f in fixable:
+            k = (id(t.source), f["field"], f.get("suggestion") or "", f.get("value") or "", _what(t))
+            fixes.setdefault(k, []).append(t)
+        if not fixable:
+            groups.setdefault((t.audit_name, t.group or t.category or t.title), []).append(t)
+    out = []
+    for (_, field, suggestion, value, what), ts in fixes.items():
+        if len(ts) < 2:
+            continue
+        if suggestion:
+            title = u"Set {} to “{}” on {} {}".format(field, suggestion, len(ts), what)
+        elif not value:
+            title = u"Fill in {} on {} {}".format(field, len(ts), what)
+        else:
+            title = u"Fix {} (now “{}”) on {} {}".format(field, value, len(ts), what)
+        out.append({"title": title, "detail": u"{} issues · {} · fix them all at once".format(
+            len(ts), ts[0].audit_name), "keys": [t.key for t in ts], "fix": True, "count": len(ts)})
+    for (audit, group), ts in groups.items():
+        if len(ts) < 2:
+            continue
+        out.append({"title": u"{} {} issues".format(len(ts), group), "detail": u"{} · work through them together".format(
+            audit), "keys": [t.key for t in ts], "fix": False, "count": len(ts)})
+    out.sort(key=lambda w: (not w["fix"], -w["count"]))
+    return out[:limit]
+
+
+def remember_recent(settings, account, entry, limit=6):
+    """Puts a just-opened audit first in this account's recent list (one per audit)."""
+    recent = [r for r in settings.get("recent") or []
+              if not (r.get("account") == account and r.get("audit_id") == entry["audit_id"])]
+    entry = dict(entry, account=account)
+    settings["recent"] = ([entry] + recent)[:limit * 3]
+    return [r for r in settings["recent"] if r.get("account") == account][:limit]
+
+
+def recent_for(settings, account, limit=6):
+    return [r for r in settings.get("recent") or [] if r.get("account") == account][:limit]

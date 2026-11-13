@@ -337,6 +337,13 @@ class Session(object):
         return self.call("GET", self._path("/issues/attachments", "/consult/attachments"),
                          [("path", _to_bytes(path))], raw=True)
 
+    def verification(self, audit_id, module, consultant):
+        """The previous revision's resolved issues on this result: {previous_revision, verified
+        (gone: fixed), still_failing}."""
+        return self.call("GET", self._path("/issues/audits/{}/verification",
+                                           "/consult/audits/{}/verification").format(audit_id),
+                         [("module", module), ("consultant", _to_bytes(consultant))])
+
     def next_request(self):
         """The newest "Open in Revit" asked for on the web in the last two minutes (claimed, so
         only one Revit window gets it), or None: {audit_id, module, consultant, issue_key, viewpoint}."""

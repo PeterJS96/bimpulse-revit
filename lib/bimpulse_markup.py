@@ -48,7 +48,7 @@ def arrow_head(x1, y1, x2, y2, size):
 
 
 class MarkupWindow(Window):
-    def __init__(self, png, resources, brush):
+    def __init__(self, png, resources, brush, font=None):
         self.brush = brush
         self.result = None
         self.tool, self.colour = "arrow", COLOURS[0][1]
@@ -63,7 +63,7 @@ class MarkupWindow(Window):
             self.Resources.MergedDictionaries.Add(resources)
         self.Background = brush("#050B14")
         self.Foreground = brush("#E6EEF7")
-        self.FontFamily = System.Windows.Media.FontFamily("Segoe UI")
+        self.FontFamily = font or System.Windows.Media.FontFamily("Segoe UI")
         area = SystemParameters.WorkArea
         self.Width, self.Height = min(1200, area.Width - 60), min(860, area.Height - 60)
         self.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -291,11 +291,11 @@ class MarkupWindow(Window):
         self.Close()
 
 
-def markup(png, resources=None, brush=None):
+def markup(png, resources=None, brush=None, font=None):
     """Shows the markup window; returns the PNG to send, or None when cancelled."""
     if brush is None:
         conv = BrushConverter()
         brush = lambda c: conv.ConvertFromString(c)  # noqa: E731
-    win = MarkupWindow(png, resources, brush)
+    win = MarkupWindow(png, resources, brush, font)
     win.ShowDialog()
     return win.result

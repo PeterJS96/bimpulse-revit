@@ -35,6 +35,14 @@ from System.Windows.Media import (BrushConverter, CombinedGeometry, FontFamily, 
                                   RectangleGeometry, SolidColorBrush, VisualTreeHelper)
 from System.Windows.Media.Imaging import BitmapCacheOption, BitmapImage
 from System.Windows.Threading import DispatcherTimer
+from System.Windows import Duration, UIElement
+from System.Windows.Media import TranslateTransform
+from System.Windows.Media.Animation import CubicEase, DoubleAnimation, EasingMode, RepeatBehavior
+from System.Windows.Media import ArcSegment, PathFigure, PathGeometry, ScaleTransform, SweepDirection
+from System.Windows.Shapes import Ellipse, Path as ShapePath
+from System.Windows import DependencyProperty
+from System.Windows.Media import BrushMappingMode, Color, GradientStop, RadialGradientBrush
+from System.Windows.Media.Effects import DropShadowEffect
 
 from Autodesk.Revit.UI import DockablePaneId, ExternalEvent, IExternalEventHandler
 from pyrevit import HOST_APP, forms
@@ -116,6 +124,122 @@ def brush(hex_colour):
     return _brushes[shown]
 
 
+ICON_FONT = FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets")
+# The website's fonts, shipped with the plugin (SIL Open Font Licence: bimpulse_ui/fonts/OFL.txt),
+# with Windows' own as the fallback.
+_FONTS = System.Uri(os.path.join(UI_DIR, "fonts") + os.sep).AbsoluteUri
+SANS = _FONTS + "#Geist, Segoe UI"
+MONO = _FONTS + "#Geist Mono, Consolas"
+SANS_FONT = FontFamily(SANS)
+MONO_FONT = FontFamily(MONO)
+DISPLAY_FONT = SANS_FONT
+# Buttons and their icons (Segoe icon font): (name, glyph, icon after the text).
+# In the docked panel these buttons show only their icon (with a tooltip), so the actions fit.
+ICON_ONLY_DOCKED = ("btnSelect", "btnProps", "btnIsolate", "btnPrev", "btnNext", "btnReload", "btnUndoFix", "btnReopen")
+ICONS = (("btnBrowse", u"\uE838", False), ("btnReload", u"\uE72C", False), ("btnCheck", u"\uE9D5", False),
+         ("btnZoom", u"\uE71E", False), ("btn3D", u"\uE81E", False), ("btnIsolate", u"\uE71C", False),
+         ("btnSelect", u"\uE8B3", False), ("btnProps", u"\uE8C8", False), ("btnResolve", u"\uE73E", False),
+         ("btnIgnore", u"\uED1A", False), ("btnReopen", u"\uE7A7", False), ("btnPrev", u"\uE76B", False),
+         ("btnNext", u"\uE76C", True), ("btnColour", u"\uE790", False), ("btnClear", u"\uE894", False),
+         ("btnSend", u"\uE724", False), ("btnUndoFix", u"\uE7A7", False), ("btnMenu", u"\uE712", False),
+         ("btnCommand", u"\uE721", False), ("btnUpdateNow", u"\uE896", False), ("btnAssign", u"\uE74E", False),
+         ("btnBrowseOpen", u"\uE8E5", False))
+# What the command bar can run: (button, title, words it is found by).
+COMMANDS = (("btnZoom", "Select & zoom", "zoom find select"), ("btn3D", "Show in 3D", "3d section box view"),
+            ("btnIsolate", "Isolate in view", "isolate hide others"), ("btnSelect", "Select only", "select"),
+            ("btnResolve", "Mark resolved", "resolve done fixed close"), ("btnIgnore", "Ignore", "ignore"),
+            ("btnReopen", "Reopen", "reopen open"), ("btnUndoFix", "Undo the last fix", "undo fix back"),
+            ("btnColour", "Colour issues in the view", "colour color severity"),
+            ("btnClear", "Clear colours and isolation", "clear colours reset"),
+            ("btnBrowse", "Browse BIMPulse", "browse open audit project"), ("btnReload", "Reload issues", "reload refresh"),
+            ("btnCheck", "Check against the model", "check model found"))
+
+
+def _reduced_motion():
+    try:
+        return not SystemParameters.ClientAreaAnimation
+    except Exception:
+        return False
+
+
+def animate_in(el, dy=8.0, ms=180, delay=0):
+    """Fades and slides an element in (skipped when Windows animations are off)."""
+    if el is None or _reduced_motion():
+        return
+    ease = CubicEase()
+    ease.EasingMode = EasingMode.EaseOut
+    move = TranslateTransform(0, dy)
+    el.RenderTransform = move
+    fade = DoubleAnimation(0.0, 1.0, Duration(System.TimeSpan.FromMilliseconds(ms)))
+    slide = DoubleAnimation(dy, 0.0, Duration(System.TimeSpan.FromMilliseconds(ms)))
+    for a in (fade, slide):
+        a.EasingFunction = ease
+        a.BeginTime = System.TimeSpan.FromMilliseconds(delay)
+    el.Opacity = 0
+    el.BeginAnimation(UIElement.OpacityProperty, fade)
+    move.BeginAnimation(TranslateTransform.YProperty, slide)
+
+
+def skeleton(rows=6, height=56, gap=6):
+    """Grey placeholder rows that gently pulse while something loads."""
+    sp = StackPanel()
+    for i in range(rows):
+        b = Border()
+        b.Height = height
+        b.CornerRadius = CornerRadius(10)
+        b.Margin = Thickness(0, 0, 6, gap)
+        b.Background = brush("#10203A")
+        if not _reduced_motion():
+            pulse = DoubleAnimation(1.0, 0.45, Duration(System.TimeSpan.FromMilliseconds(750)))
+            pulse.AutoReverse = True
+            pulse.RepeatBehavior = RepeatBehavior.Forever
+            pulse.BeginTime = System.TimeSpan.FromMilliseconds(i * 90)
+            b.BeginAnimation(UIElement.OpacityProperty, pulse)
+        sp.Children.Add(b)
+    return sp
+
+
+def _mix(a, b, t):
+    """Colour a moved t of the way towards b."""
+    return Color.FromArgb(255, int(a.R + (b.R - a.R) * t), int(a.G + (b.G - a.G) * t), int(a.B + (b.B - a.B) * t))
+
+
+def hover_card(title, rows, hint=None):
+    """A rich tooltip: a title, label/value rows and a hint (styled by the shared ToolTip style)."""
+    sp = StackPanel()
+    sp.Children.Add(text(title, 12.5, bold=True))
+    for label, value in rows:
+        if value in (None, ""):
+            continue
+        line = StackPanel()
+        line.Orientation = Orientation.Horizontal
+        line.Margin = Thickness(0, 4, 0, 0)
+        if label:
+            k = text(label.upper(), 10, "#8A9BB3", mono=True)
+            k.MinWidth = 84
+            k.VerticalAlignment = VerticalAlignment.Center
+            line.Children.Add(k)
+        line.Children.Add(text(u"{}".format(value), 12, wrap=True))
+        sp.Children.Add(line)
+    if hint:
+        sp.Children.Add(text(hint, 11, "#00A0E3", margin=(0, 7, 0, 0), wrap=True))
+    return sp
+
+
+def ago(iso):
+    """ "2026-11-10T09:00:00" -> "2 days ago" (roughly). """
+    try:
+        then = datetime.datetime.strptime((iso or "")[:19], "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        return ""
+    secs = (datetime.datetime.utcnow() - then).total_seconds()
+    for size, unit in ((86400 * 30, "month"), (86400 * 7, "week"), (86400, "day"), (3600, "hour"), (60, "minute")):
+        if secs >= size:
+            n = int(secs // size)
+            return u"{} {}{} ago".format(n, unit, "" if n == 1 else "s")
+    return "just now"
+
+
 def revit_theme():
     """'dark' when Revit's own theme is dark (Revit 2024 and later), else 'light'."""
     try:
@@ -140,7 +264,7 @@ def themed_xaml(name, theme):
         os.makedirs(UI_CACHE)
     path = os.path.join(UI_CACHE, "{}-{}.xaml".format(os.path.splitext(name)[0], theme))
     with io.open(path, "w", encoding="utf-8") as f:
-        f.write(plug.themed_xaml(text, theme, styles, os.path.join(UI_DIR, "logo.png")))
+        f.write(plug.themed_xaml(text, theme, styles, os.path.join(UI_DIR, "logo.png"), (SANS, MONO)))
     THEME["name"] = theme
     return path
 
@@ -175,7 +299,7 @@ def text(value, size=13, colour="#E6EEF7", bold=False, mono=False, wrap=False, m
     if bold:
         tb.FontWeight = FontWeights.SemiBold
     if mono:
-        tb.FontFamily = FontFamily("Consolas")
+        tb.FontFamily = MONO_FONT
     if wrap:
         tb.TextWrapping = TextWrapping.Wrap
     else:
@@ -287,6 +411,8 @@ class Dashboard(object):
         self.flushing = False
         self.fixed = {}  # topic key -> fields fixed in the model this session
         self.last_fix = None  # what the last fix changed, for "Undo fix"
+        self.win_filter = None  # (issue keys, label): a biggest win or "still failing" being worked through
+        self._last_pct = None
         self.selection = None  # (element ids, unique ids) when showing only the selection's issues
         self._selection_handler = None
         self.images = {}  # attachment path -> PNG/JPEG bytes
@@ -347,6 +473,18 @@ class Dashboard(object):
         self.btnAssign.Click += self.on_assign
         self.btnMenu.Click += self.on_menu
         self.btnUndoFix.Click += lambda s, a: self.undo_fix()
+        self.btnCommand.Click += lambda s, a: self.open_command()
+        for lb in (self.lbIssues, self.lbProjects, self.lbCommand):
+            self.hoverable_list(lb)
+        self.btnStartBrowse.Click += lambda s, a: self.on_browse(None, None)
+        self.btnStartSignIn.Click += lambda s, a: self.sign_in()
+        self.pnlNoFilesAction.Click += lambda s, a: self._empty_action and self._empty_action()
+        self._empty_action = None
+        self.bdCommandDim.MouseLeftButtonUp += lambda s, a: self.close_command()
+        self.tbCommand.TextChanged += lambda s, a: self.fill_command()
+        self.tbCommand.PreviewKeyDown += self.on_command_key
+        self.lbCommand.MouseLeftButtonUp += lambda s, a: self.run_command()
+        self.iconise()
         self.btnSelection.MouseLeftButtonUp += lambda s, a: self.toggle_selection()
         self.btnUpdateNow.Click += lambda s, a: self.update_now()
         self.btnUpdateLater.Click += lambda s, a: self.update_later()
@@ -438,6 +576,7 @@ class Dashboard(object):
         t.start()
 
     def cloud_error(self, e):
+        self.list_loading(False)
         if isinstance(e, cloud.SignedOut):
             self.session = None
             self.update_account()
@@ -514,7 +653,7 @@ class Dashboard(object):
         self.audit_filter = None
         self.statFound.Text = u"–"
         self.statFoundSub.Text = u"Run “Check against model”"
-        self.refresh()
+        self.refresh(animate=True)
         msg = "Loaded {} issue{} from {} file{}.".format(len(self.topics), "" if len(self.topics) == 1 else "s",
                                                         len(files), "" if len(files) == 1 else "s")
         if errors:
@@ -548,13 +687,13 @@ class Dashboard(object):
             self.refresh()
             self.status("Up to date with BIMPulse. New comments and statuses arrive every {} seconds.".format(
                 LIVE_SECONDS))
+            self.load_changes()
         self.background(work, done)
 
     # ---------- dashboard ----------
 
-    def refresh(self, keep=None):
+    def refresh(self, keep=None, animate=False):
         topics = self.topics
-        self.pnlNoFiles.Visibility = Visibility.Collapsed if self.files else Visibility.Visible
         project = next((f.manifest.get("project") or f.project for f in self.files
                         if f.manifest.get("project") or f.project), "")
         revision = next((f.manifest.get("revision") for f in self.files if f.manifest.get("revision")), "")
@@ -574,8 +713,20 @@ class Dashboard(object):
         self.statResolved.Text = "{}%".format(pct)
         self.colResolved.Width = GridLength(pct, GridUnitType.Star)
         self.colUnresolved.Width = GridLength(100 - pct, GridUnitType.Star)
+        self.draw_ring(pct if total else 0)
+        score = plug.average(f.cloud.get("score") for f in self.files if f.cloud)
+        self.txtScore.Text = u"Score {}%".format(score) if score is not None else ""
+        self.txtScore.ToolTip = (u"Audit score {}% ({}): the saved audit's score for the open results. The ring is "
+                                 u"live: it fills as issues are resolved.".format(score, plug.grade(score))
+                                 if score is not None else None)
+        self.txtScore.Foreground = brush({"Green": "#22C55E", "Amber": "#F59E0B", "Red": "#EF4444"}.get(
+            plug.grade(score), "#8A9BB3"))
+        if total and pct == 100 and self._last_pct is not None and self._last_pct < 100:
+            self.celebrate()
+        self._last_pct = pct if total else None
         self._breakdown(topics)
-        self._fill_list(keep)
+        self._fill_list(keep, animate)
+        self.show_start()
 
     def _breakdown(self, topics):
         counts = {}
@@ -626,8 +777,15 @@ class Dashboard(object):
             sp.Children.Add(text(name, 12, "#E6EEF7", bold=True))
             sp.Children.Add(text("{}/{}".format(n_open, n), 11, "#00A0E3", mono=True, margin=(8, 1, 0, 0)))
             chip.Child = sp
-            chip.ToolTip = "{} open of {} {} issues".format(n_open, n, name)
+            sev = {}
+            for x in topics:
+                if x.audit == audit and x.review == bcf.OPEN:
+                    sev[x.severity] = sev.get(x.severity, 0) + 1
+            chip.ToolTip = hover_card(name, [("Open", u"{} of {}".format(n_open, n)), ("Resolved", n - n_open)] +
+                                      [(k.title(), sev[k]) for k in ("critical", "error", "warning", "info") if sev.get(k)],
+                                      "Click to show only these issues (click again for all)")
             chip.MouseLeftButtonUp += (lambda a: lambda s, e: self.toggle_audit(a))(audit)
+            self.hoverable(chip)
             self.wpAudits.Children.Add(chip)
 
     def toggle_audit(self, audit):
@@ -659,6 +817,8 @@ class Dashboard(object):
                 continue
             if self.selection is not None and not plug.in_selection(t, *self.selection):
                 continue
+            if self.win_filter is not None and t.key not in self.win_filter[0]:
+                continue
             out.append(t)
         sort = self.cbSort.SelectedIndex
         if sort == 1:
@@ -671,17 +831,19 @@ class Dashboard(object):
             out.sort(key=lambda t: (t.severity_rank, t.audit_name, t.index))
         return out
 
-    def _fill_list(self, keep=None):
+    def _fill_list(self, keep=None, animate=False):
         keep = keep or self.current
         shown = self.filtered()
         self.lbIssues.SelectionChanged -= self.on_pick
         self.lbIssues.Items.Clear()
         pick = None
-        for t in shown[:LIST_LIMIT]:
+        for n, t in enumerate(shown[:LIST_LIMIT]):
             item = ListBoxItem()
             item.Tag = t
             item.Content = self._row(t)
             self.lbIssues.Items.Add(item)
+            if animate and n < 14:
+                animate_in(item, 6, 200, n * 22)
             if keep is not None and t is keep:
                 pick = item
         if pick is not None:  # keep the selection without zooming to it again
@@ -689,7 +851,9 @@ class Dashboard(object):
             self.lbIssues.ScrollIntoView(pick)
         self.lbIssues.SelectionChanged += self.on_pick
         more = " (showing the first {:,})".format(LIST_LIMIT) if len(shown) > LIST_LIMIT else ""
-        self.txtCount.Text = "{:,} ISSUE{}{}".format(len(shown), "" if len(shown) == 1 else "S", more.upper())
+        self.txtCount.Text = "{:,} ISSUE{}{}{}".format(len(shown), "" if len(shown) == 1 else "S", more.upper(),
+                                                        u" \u00b7 " + self.win_filter[1].upper() if self.win_filter else "")
+        self._empty_state(shown)
         self.show_detail(pick.Tag if pick is not None else None)
 
     def _row(self, t):
@@ -736,7 +900,13 @@ class Dashboard(object):
             who = pill(u"{}{}".format(initials(t.assignee_name), u" · " + short_date(t.due_on) if t.due_on else ""),
                        "#EF4444" if late else "#8A9BB3")
             who.Margin = Thickness(0, 0, 6, 0)
-            who.ToolTip = u"Assigned to {}{}".format(t.assignee_name, ", due " + short_date(t.due_on) if t.due_on else "")
+            person = next((x for x in self.people if x.get("id") == t.assignee), {})
+            theirs = [x for x in self.topics if x.assignee == t.assignee and x.review == bcf.OPEN]
+            who.ToolTip = hover_card(t.assignee_name, [
+                ("Email", person.get("email")),
+                ("Due", (u"Overdue \u00b7 " if late else u"") + short_date(t.due_on) if t.due_on else "No due date"),
+                ("Open issues", u"{} assigned to them here".format(len(theirs))),
+                ("Overdue", sum(1 for x in theirs if cloud.is_overdue(x, datetime.date.today().isoformat())) or None)])
             right.Children.Add(who)
         if t.review != bcf.OPEN:
             right.Children.Add(pill(t.review.upper(), REVIEW_COLOUR[t.review]))
@@ -769,8 +939,12 @@ class Dashboard(object):
         self.current = t
         self.pnlEmpty.Visibility = Visibility.Visible if t is None else Visibility.Collapsed
         self.pnlDetail.Visibility = Visibility.Collapsed if t is None else Visibility.Visible
+        self.pnlWins.Visibility = Visibility.Collapsed
         if t is None:
+            self.show_wins()
             return
+        if not same:
+            animate_in(self.pnlDetail, 6, 170)
         colour = SEV_COLOUR.get(t.severity, "#F59E0B")
         self.bdSeverity.Background = brush("#26" + colour[1:])
         self.txtSeverity.Text = SEV_LABEL.get(t.severity, t.severity.upper())
@@ -839,7 +1013,8 @@ class Dashboard(object):
             if not same:  # keep a half-written comment when the list refreshes
                 self.tbNote.Text = ""
                 self.spThread.Children.Clear()
-                self.txtThreadState.Text = "Loading…"
+                self.spThread.Children.Add(skeleton(2, 46))
+                self.txtThreadState.Text = ""
                 self.chkSnapshot.IsChecked = False
                 self.load_thread(t)
                 if self.seen.unread(t):
@@ -983,7 +1158,7 @@ class Dashboard(object):
                 send(None, viewpoint)
                 return
             try:
-                drawn = markup.markup(png, self.Resources, brush)
+                drawn = markup.markup(png, self.Resources, brush, SANS_FONT)
             except Exception:
                 debug(u"markup failed: {}".format(traceback.format_exc()))
                 drawn = png
@@ -1572,7 +1747,16 @@ class Dashboard(object):
             row.Padding = Thickness(10, 7, 10, 7)
             row.Margin = Thickness(0, 0, 0, 5)
             row.Cursor = Cursors.Hand
-            row.ToolTip = "Select and zoom to this element"
+            status_label = ""
+            if res is not None and i < len(res.rows):
+                status_label = ROW_STATUS.get(res.rows[i][0], ("", ""))[0]
+            row.ToolTip = hover_card(
+                u"{}{}".format(e.get("element_id") and "ID " + str(e["element_id"]) or "Element",
+                               u" \u00b7 " + e["category"] if e.get("category") else ""),
+                [("Family", e.get("family")), ("Type", e.get("type")), ("Level", e.get("level")),
+                 (e.get("parameter") or "Value", e.get("value") if e.get("parameter") else None),
+                 ("Unique id", e.get("unique_id")), ("In model", status_label or "Run Check against model")],
+                "Click to select and zoom to it in Revit")
             g = Grid()
             c0, c1 = ColumnDefinition(), ColumnDefinition()
             c1.Width = GridLength.Auto
@@ -1611,6 +1795,7 @@ class Dashboard(object):
                 g.Children.Add(p)
             row.Child = g
             row.MouseLeftButtonUp += (lambda idx: lambda s, a: self.act("zoom", only=idx))(i)
+            self.hoverable(row)
             self.spElements.Children.Add(row)
         if n > 200:
             self.spElements.Children.Add(text("and {:,} more".format(n - 200), 12, "#8A9BB3"))
@@ -1833,11 +2018,15 @@ class Dashboard(object):
             self.txtAccount.Text = "Sign in"
             self.txtAvatar.Text = "?"
             self.btnAccount.ToolTip = "Sign in with your BIMPulse account"
+            if self.started:
+                self.show_start()
             return
         email = self.session.email
         self.txtAccount.Text = email or "Signed in"
         self.txtAvatar.Text = (email[:1] or "?").upper()
         self.btnAccount.ToolTip = "Signed in to BIMPulse as {}. Click to sign out.".format(email)
+        if self.started:
+            self.show_start()
 
     def _account(self):
         """The signed-in BIMPulse account (lower-case email), or None."""
@@ -1920,14 +2109,24 @@ class Dashboard(object):
     # ---------- BIMPulse browser ----------
 
     def show_browse(self, show=True):
+        was = self.pnlBrowse.Visibility == Visibility.Visible
         self.pnlBrowse.Visibility = Visibility.Visible if show else Visibility.Collapsed
+        if show and not was:
+            animate_in(self.pnlBrowse, 12, 220)
 
     def on_browse(self, sender, args):
         if self.session is None:
             self.sign_in(then_browse=True)
             return
         self.show_browse(True)
-        self.txtBrowseNote.Text = "Loading your projects…"
+        self.txtBrowseNote.Text = ""
+        if not self.projects:
+            self.lbProjects.Items.Clear()
+            holder = ListBoxItem()
+            holder.IsEnabled = False
+            holder.Content = skeleton(5, 50)
+            holder.Background = brush("#00000000")
+            self.lbProjects.Items.Add(holder)
         session = self.session
 
         def work():
@@ -1987,7 +2186,8 @@ class Dashboard(object):
             return
         audit_id = self._revisions[i]["id"]
         self.spResults.Children.Clear()
-        self.txtBrowseNote.Text = "Loading the saved audit…"
+        self.spResults.Children.Add(skeleton(4, 48))
+        self.txtBrowseNote.Text = ""
         session = self.session
 
         def done(audit):
@@ -2037,6 +2237,7 @@ class Dashboard(object):
                     Grid.SetColumn(p, 2)
                     g.Children.Add(p)
                 row.Child = g
+                self.hoverable(row)
                 self.spResults.Children.Add(row)
         if not by_consultant:
             self.spResults.Children.Add(text("This saved audit has no results to open.", 12.5, "#8A9BB3"))
@@ -2064,8 +2265,16 @@ class Dashboard(object):
         if not picked:
             self.txtBrowseNote.Text = "Tick at least one result to open."
             return
+        self.open_results(audit, picked)
+
+    def open_results(self, audit, picked):
+        """Downloads saved results ({module, consultant, name, score}) of a saved audit and opens
+        them beside the open ones; remembers the audit for the start screen."""
         self.txtBrowseNote.Text = "Downloading {} result{}…".format(len(picked), "" if len(picked) == 1 else "s")
         self.btnBrowseOpen.IsEnabled = False
+        self.show_browse(False)
+        self.list_loading(True)
+        self.status(u"Opening {} result{} from BIMPulse...".format(len(picked), "" if len(picked) == 1 else "s"))
         session, audit_id, can = self.session, audit["id"], bool(audit.get("can_review"))
         can_assign = bool(audit.get("can_assign", can))
 
@@ -2075,13 +2284,15 @@ class Dashboard(object):
                 path = session.download_bcf(audit_id, e["module"], e["consultant"])
                 if path:
                     got.append((path, {"audit_id": audit_id, "module": e["module"], "consultant": e["consultant"],
-                                       "can_review": can, "can_assign": can_assign}))
+                                       "can_review": can, "can_assign": can_assign, "score": e.get("score"),
+                                       "name": e.get("name")}))
                 else:
                     empty.append(u"{} ({})".format(e["name"], e["consultant"]))
             return got, empty
 
         def done(result):
             self.btnBrowseOpen.IsEnabled = True
+            self.list_loading(False)
             got, empty = result
             tags = self._tags()
             fresh = set((t["module"], t["consultant"]) for _, t in got)
@@ -2093,8 +2304,15 @@ class Dashboard(object):
             if got:
                 self.load(keep + [p for p, _ in got], tags)
                 self.show_browse(False)
+                opened = [f.cloud for f in self.files if f.cloud and f.cloud["audit_id"] == audit_id]
+                plug.remember_recent(self.settings, self._account(), {
+                    "audit_id": audit_id, "project": audit.get("project") or "Project",
+                    "revision": audit.get("revision") or "", "opened_at": datetime.datetime.utcnow().isoformat(),
+                    "results": [dict((k, c.get(k)) for k in ("module", "consultant", "name", "score")) for c in opened]})
+                save_settings(self.settings)
             note = ("Nothing failed that can be found in a model: " + ", ".join(empty) + ".") if empty else ""
             if not got:
+                self.show_browse(True)
                 self.txtBrowseNote.Text = note or "Nothing to open."
             elif note:
                 self.status(note)
@@ -2132,6 +2350,7 @@ class Dashboard(object):
         item("Open as a window" if self.docked else "Dock beside the model", self.toggle_dock)
         item("Show the tour", self.start_tour)
         item("Keyboard shortcuts", self.show_shortcuts)
+        item("Search everything (Ctrl+K)", self.open_command)
         item("Send error reports to BIMPulse", self.toggle_reports, bool(self.settings.get("error_reports")))
         item("Check for updates", lambda: self.check_updates(force=True))
         line()
@@ -2306,6 +2525,7 @@ class Dashboard(object):
         self.bdTourRing.Margin = Thickness(x, y, 0, 0)
         self.bdTourRing.Width, self.bdTourRing.Height = max(w, 0), max(h, 0)
         self.txtTourStep.Text = "{} OF {}".format(i + 1, len(self.tour))
+        animate_in(self.bdTourCard, 6, 180)
         self.txtTourTitle.Text = title
         self.txtTourBody.Text = body
         self.btnTourBack.IsEnabled = i > 0
@@ -2434,12 +2654,14 @@ class Dashboard(object):
             self._focus(req)
             return
         self.status("Opening the issue from BIMPulse...")
+        self.list_loading(True)
         session = self.session
 
         def work():
             return session.audit(req["audit_id"]), session.download_bcf(*ref)
 
         def done(result):
+            self.list_loading(False)
             audit, path = result
             if not path:
                 self.status("That result has nothing that can be shown in a model.", error=True)
@@ -2518,10 +2740,582 @@ class Dashboard(object):
         t.daemon = True
         t.start()
 
+    # ---------- hover: glow and a light that follows the cursor ----------
+
+    def hoverable(self, el, part=None, light=True):
+        """On hover: a soft BIMPulse-blue glow around `el` and, when `light`, a light that follows
+        the cursor across `part` (the card's border; for list rows, their template's border).
+        Only the element under the mouse gets them, so long lists stay fast."""
+        el.MouseEnter += lambda s, a: self._hover_on(el, part, light)
+        if light:
+            el.MouseMove += lambda s, a: self._hover_move(el, *self._at(el, a))
+        el.MouseLeave += lambda s, a: self._hover_off(el)
+
+    def hoverable_list(self, listbox):
+        """The hover effect for a list's rows, with one handler on the list (not one per row: a
+        list can have 1,500 rows)."""
+        listbox.MouseMove += lambda s, a: self._list_hover(listbox, a)
+        listbox.MouseLeave += lambda s, a: getattr(self, "_hover", None) and self._hover_off(self._hover["el"])
+
+    def _list_hover(self, listbox, args):
+        el = args.OriginalSource
+        while el is not None and not isinstance(el, ListBoxItem) and el is not listbox:
+            try:
+                el = VisualTreeHelper.GetParent(el)
+            except Exception:
+                el = None
+        hover = getattr(self, "_hover", None)
+        if not isinstance(el, ListBoxItem) or not el.IsEnabled:
+            if hover:
+                self._hover_off(hover["el"])
+            return
+        if not hover or hover["el"] is not el:
+            self._hover_on(el, (lambda it: lambda: it.Template.FindName("bd", it))(el))
+        self._hover_move(el, *self._at(el, args))
+
+    def _at(self, el, args):
+        target = self._hover_part(el)
+        p = args.GetPosition(target) if target is not None else None
+        return (p.X, p.Y) if p is not None else (0, 0)
+
+    def _hover_part(self, el):
+        hover = getattr(self, "_hover", None)
+        return hover["part"] if hover and hover["el"] is el else None
+
+    def _hover_on(self, el, part=None, light=True):
+        if getattr(self, "_hover", None):
+            self._hover_off(self._hover["el"])
+        dark = THEME["name"] == "dark"
+        accent = brush("#00A0E3").Color
+        glow = DropShadowEffect()
+        glow.Color = accent
+        glow.ShadowDepth = 0
+        glow.Opacity = 0.55 if dark else 0.25
+        glow.BlurRadius = 16 if dark else 12
+        el.Effect = glow
+        if not _reduced_motion():
+            grow = DoubleAnimation(0.0, glow.BlurRadius, Duration(System.TimeSpan.FromMilliseconds(140)))
+            glow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, grow)
+        hover = {"el": el, "part": None}
+        target = part() if callable(part) else (part or (el if isinstance(el, Border) else None))
+        if light and isinstance(target, Border) and isinstance(target.Background, SolidColorBrush):
+            base = target.Background.Color
+            line = target.BorderBrush.Color if isinstance(target.BorderBrush, SolidColorBrush) else base
+            fill = RadialGradientBrush()
+            fill.MappingMode = BrushMappingMode.Absolute
+            fill.RadiusX = fill.RadiusY = 160
+            fill.GradientStops.Add(GradientStop(_mix(base, accent, 0.16 if dark else 0.10), 0.0))
+            fill.GradientStops.Add(GradientStop(base, 1.0))
+            edge = RadialGradientBrush()
+            edge.MappingMode = BrushMappingMode.Absolute
+            edge.RadiusX = edge.RadiusY = 140
+            edge.GradientStops.Add(GradientStop(accent, 0.0))
+            edge.GradientStops.Add(GradientStop(line, 1.0))
+            hover.update(part=target, fill=fill, edge=edge,
+                         bg=target.ReadLocalValue(Border.BackgroundProperty),
+                         line=target.ReadLocalValue(Border.BorderBrushProperty))
+            target.Background, target.BorderBrush = fill, edge
+            self._hover = hover
+            self._hover_move(el, target.ActualWidth / 2.0, target.ActualHeight / 2.0)
+            return
+        self._hover = hover
+
+    def _hover_move(self, el, x, y):
+        hover = getattr(self, "_hover", None)
+        if not hover or hover["el"] is not el or hover.get("fill") is None:
+            return
+        p = Point(x, y)
+        for b in (hover["fill"], hover["edge"]):
+            b.Center = p
+            b.GradientOrigin = p
+
+    def _hover_off(self, el):
+        hover = getattr(self, "_hover", None)
+        el.Effect = None
+        if not hover or hover["el"] is not el:
+            return
+        self._hover = None
+        target = hover.get("part")
+        if target is not None and hover.get("fill") is not None:
+            for prop, saved in ((Border.BackgroundProperty, hover["bg"]), (Border.BorderBrushProperty, hover["line"])):
+                if saved is DependencyProperty.UnsetValue:
+                    target.ClearValue(prop)  # back to the template's colour (and its selected look)
+                else:
+                    target.SetValue(prop, saved)
+
+    # ---------- health, wins, changes, start ----------
+
+    def draw_ring(self, pct):
+        """The resolved ring: a faint track and a green arc for the share resolved."""
+        g = self.gridRing
+        g.Children.Clear()
+        size = g.Width
+        th = max(3.0, size / 9.0)
+        track = Ellipse()
+        track.Stroke = brush("#16243A")
+        track.StrokeThickness = th
+        g.Children.Add(track)
+        if pct <= 0:
+            return
+        if pct >= 100:
+            full = Ellipse()
+            full.Stroke = brush("#22C55E")
+            full.StrokeThickness = th
+            g.Children.Add(full)
+            return
+        import math
+        r, c = (size - th) / 2.0, size / 2.0
+        angle = math.radians(360.0 * pct / 100.0)
+        start = Point(c, c - r)
+        end = Point(c + r * math.sin(angle), c - r * math.cos(angle))
+        fig = PathFigure()
+        fig.StartPoint = start
+        fig.IsClosed = False
+        fig.Segments.Add(ArcSegment(end, Size(r, r), 0, pct > 50, SweepDirection.Clockwise, True))
+        geo = PathGeometry()
+        geo.Figures.Add(fig)
+        arc = ShapePath()
+        arc.Data = geo
+        arc.Stroke = brush("#22C55E")
+        arc.StrokeThickness = th
+        arc.StrokeStartLineCap = arc.StrokeEndLineCap = System.Windows.Media.PenLineCap.Round
+        g.Children.Add(arc)
+
+    def celebrate(self):
+        """Every open issue resolved: the ring pops and Windows says well done."""
+        if not _reduced_motion():
+            grow = ScaleTransform(1, 1)
+            self.gridRing.RenderTransformOrigin = Point(0.5, 0.5)
+            self.gridRing.RenderTransform = grow
+            pop = DoubleAnimation(1.0, 1.25, Duration(System.TimeSpan.FromMilliseconds(260)))
+            pop.AutoReverse = True
+            ease = CubicEase()
+            ease.EasingMode = EasingMode.EaseOut
+            pop.EasingFunction = ease
+            grow.BeginAnimation(ScaleTransform.ScaleXProperty, pop)
+            grow.BeginAnimation(ScaleTransform.ScaleYProperty, pop)
+        self.announce("BIMPulse", u"Every issue here is resolved. Brilliant work.")
+
+    def show_wins(self):
+        """With results open and no issue picked: the few changes that clear the most issues."""
+        wins = plug.biggest_wins(self.topics, NOT_FIXABLE) if self.files and self.win_filter is None else []
+        self.pnlWins.Visibility = Visibility.Visible if wins else Visibility.Collapsed
+        self.pnlEmpty.Visibility = Visibility.Collapsed if wins else Visibility.Visible
+        self.spWins.Children.Clear()
+        for n, w in enumerate(wins):
+            card = Border()
+            card.Background = brush("#081221")
+            card.BorderBrush = brush("#1C2B40")
+            card.BorderThickness = Thickness(1)
+            card.CornerRadius = CornerRadius(10)
+            card.Padding = Thickness(12, 10, 12, 10)
+            card.Margin = Thickness(0, 0, 0, 8)
+            card.Cursor = Cursors.Hand
+            g = Grid()
+            for width in (GridLength(34), GridLength(1, GridUnitType.Star)):
+                cd = ColumnDefinition()
+                cd.Width = width
+                g.ColumnDefinitions.Add(cd)
+            badge = Border()
+            badge.Width = badge.Height = 24
+            badge.CornerRadius = CornerRadius(12)
+            badge.Background = brush("#14304D")
+            badge.VerticalAlignment = VerticalAlignment.Top
+            num = text(str(n + 1), 12, "#00A0E3", bold=True)
+            num.HorizontalAlignment = HorizontalAlignment.Center
+            num.VerticalAlignment = VerticalAlignment.Center
+            badge.Child = num
+            g.Children.Add(badge)
+            body = StackPanel()
+            Grid.SetColumn(body, 1)
+            body.Children.Add(text(w["title"], 13.5, bold=True, wrap=True))
+            body.Children.Add(text(w["detail"], 11.5, "#8A9BB3", margin=(0, 3, 0, 0), wrap=True))
+            g.Children.Add(body)
+            card.Child = g
+            self.hoverable(card)
+            card.MouseLeftButtonUp += (lambda win: lambda s, a: self.apply_win(win))(w)
+            self.spWins.Children.Add(card)
+            animate_in(card, 8, 220, n * 50)
+
+    def apply_win(self, w):
+        self.win_filter = (set(w["keys"]), "biggest win")
+        self.cbReview.SelectedIndex = 0
+        self.refresh(animate=True)
+        if self.lbIssues.Items.Count:
+            self.lbIssues.SelectedIndex = 0
+        self.status(u"Showing the {} issues of this win.{} Clear filters to see them all.".format(
+            len(w["keys"]), u" In \u2018Fix it in the model\u2019, \u2018Apply to all\u2019 fixes them in one go."
+            if w["fix"] else ""))
+
+    def load_changes(self):
+        """Since the previous revision: how many issues resolved there are now fixed, and which still fail."""
+        refs = sorted(set((f.cloud["audit_id"], f.cloud["module"], f.cloud["consultant"]) for f in self.files if f.cloud))
+        if not refs or self.session is None:
+            self.spChanged.Visibility = Visibility.Collapsed
+            return
+        session = self.session
+
+        def work():
+            return [(r, session.verification(*r)) for r in refs]
+
+        def done(results):
+            prev = next((v.get("previous_revision") for _, v in results if v and v.get("previous_audit_id")), None)
+            self.spChanged.Children.Clear()
+            if not prev:
+                self.spChanged.Visibility = Visibility.Collapsed
+                return
+            fixed = [x for _, v in results for x in (v.get("verified") or [])]
+            failing = set()
+            for (a, m, c), v in results:
+                keys = set(x["key"] for x in v.get("still_failing") or [])
+                failing |= set(t.key for t in self.topics if t.issue_key in keys and t.source and t.source.cloud
+                               and (t.source.cloud["audit_id"], t.source.cloud["module"], t.source.cloud["consultant"])
+                               == (a, m, c))
+            label = text(u"SINCE REV {}".format(prev), 10.5, "#8A9BB3", mono=True, margin=(0, 4, 10, 0))
+            self.spChanged.Children.Add(label)
+            ok = self._chip(u"\u2713 {} fixed".format(len(fixed)), "#22C55E")
+            ok.ToolTip = hover_card(u"Fixed since Rev {}".format(prev), [
+                ("", u"\u2022 " + (x.get("title") or "Issue")) for x in fixed[:10]] +
+                ([("", u"\u2026 and {} more".format(len(fixed) - 10))] if len(fixed) > 10 else []),
+                "Resolved last revision and gone from this one: verified fixed")
+            self.spChanged.Children.Add(ok)
+            bad = self._chip(u"\u26A0 {} still failing".format(len(failing)), "#EF4444" if failing else "#8A9BB3")
+            bad.ToolTip = hover_card(u"Still failing since Rev {}".format(prev), [],
+                                     "Marked resolved last revision but failing again. Click to show them.")
+            if failing:
+                bad.Cursor = Cursors.Hand
+                bad.MouseLeftButtonUp += lambda s, a: self.show_keys(failing, "still failing")
+            self.spChanged.Children.Add(bad)
+            self.spChanged.Visibility = Visibility.Visible
+            animate_in(self.spChanged, 4, 200)
+        self.quietly(work, done)
+
+    def _chip(self, label, colour):
+        chip = Border()
+        chip.CornerRadius = CornerRadius(14)
+        chip.Padding = Thickness(10, 3, 10, 3)
+        chip.Margin = Thickness(0, 0, 6, 6)
+        chip.Background = brush("#26" + colour[1:])
+        chip.Child = text(label, 11.5, colour, bold=True)
+        return chip
+
+    def show_keys(self, keys, label):
+        self.win_filter = (set(keys), label)
+        self.cbReview.SelectedIndex = 1
+        self.refresh(animate=True)
+        self.status(u"Showing the {} issues {}. Clear filters to see them all.".format(len(keys), label))
+
+    def show_start(self):
+        """Before any result is open: a welcome and the recent audits, one click to reopen."""
+        show = not self.files and self.spLoading.Visibility != Visibility.Visible
+        was = self.pnlStart.Visibility == Visibility.Visible
+        self.pnlStart.Visibility = Visibility.Visible if show else Visibility.Collapsed
+        if not show:
+            return
+        email = self.session.email if self.session is not None else ""
+        first = email.split("@")[0].split(".")[0].split("_")[0].title() if email else ""
+        self.txtStartTitle.Text = u"Welcome back, {}".format(first) if first else "Welcome to BIMPulse"
+        self.btnStartSignIn.Visibility = Visibility.Collapsed if self.session is not None else Visibility.Visible
+        recent = plug.recent_for(self.settings, self._account()) if self.session is not None else []
+        self.txtStartBody.Text = ("Pick up where you left off, or open another saved audit." if recent else
+                                  "Open a saved audit to see its issues, fix them in the model and talk with your team."
+                                  if self.session is not None else
+                                  "Sign in with your BIMPulse account to open your saved audits.")
+        self.lblRecent.Visibility = Visibility.Visible if recent else Visibility.Collapsed
+        self.wpRecent.Children.Clear()
+        for n, r in enumerate(recent):
+            card = Border()
+            card.Width = 290 if not self.docked else 300
+            card.Margin = Thickness(0, 0, 12, 12)
+            card.Padding = Thickness(16, 14, 16, 14)
+            card.CornerRadius = CornerRadius(12)
+            card.Background = brush("#0B1626")
+            card.BorderBrush = brush("#1C2B40")
+            card.BorderThickness = Thickness(1)
+            card.Cursor = Cursors.Hand
+            sp = StackPanel()
+            name = text(r.get("project") or "Project", 15.5, bold=True)
+            name.FontFamily = DISPLAY_FONT
+            sp.Children.Add(name)
+            results = r.get("results") or []
+            sp.Children.Add(text(u"Rev {} \u00b7 {} result{}".format(r.get("revision") or "-", len(results),
+                                                                     "" if len(results) == 1 else "s"),
+                                 12, "#8A9BB3", margin=(0, 3, 0, 0)))
+            foot = StackPanel()
+            foot.Orientation = Orientation.Horizontal
+            foot.Margin = Thickness(0, 10, 0, 0)
+            score = plug.average(x.get("score") for x in results)
+            if score is not None:
+                colour = {"Green": "#22C55E", "Amber": "#F59E0B", "Red": "#EF4444"}[plug.grade(score)]
+                foot.Children.Add(pill(u"{}%".format(score), colour))
+            foot.Children.Add(text(u"Opened {}".format(ago(r.get("opened_at"))), 11.5, "#5D6F88", margin=(8, 1, 0, 0)))
+            sp.Children.Add(foot)
+            card.Child = sp
+            card.ToolTip = hover_card(r.get("project") or "Project",
+                                      [("Results", u", ".join(u"{} ({})".format(x.get("name") or x.get("module"),
+                                                                                x.get("consultant")) for x in results))],
+                                      "Click to open these results again")
+            self.hoverable(card)
+            card.MouseLeftButtonUp += (lambda entry: lambda s, a: self.reopen_recent(entry))(r)
+            self.wpRecent.Children.Add(card)
+            if not was:
+                animate_in(card, 10, 240, 60 + n * 45)
+        if not was:
+            animate_in(self.txtStartTitle, 8, 240)
+
+    def reopen_recent(self, entry):
+        if self.session is None:
+            self.sign_in()
+            return
+        session = self.session
+        wanted = set((x.get("module"), x.get("consultant")) for x in entry.get("results") or [])
+
+        def done(audit):
+            picked = [e for e in audit.get("entries") or [] if (e.get("module"), e.get("consultant")) in wanted]
+            if not picked:
+                self.status("Those results aren't in the saved audit any more. Browse to pick others.", error=True)
+                return
+            self.browse_audit = audit
+            self.open_results(audit, picked)
+        self.status(u"Opening {}...".format(entry.get("project") or "the audit"))
+        self.background(lambda: session.audit(entry["audit_id"]), done)
+
+    # ---------- look and feel ----------
+
+    def iconise(self):
+        """Puts an icon on each main button (keeping its words) and the display font on titles."""
+        for name, glyph, after in ICONS:
+            b = getattr(self, name, None)
+            if b is None:
+                continue
+            label = b.Content if isinstance(b.Content, basestring) else ""
+            label = label.replace(u"\u2039", "").replace(u"\u203a", "").replace(u"\u22ef", "").strip()
+            if self.docked and name in ICON_ONLY_DOCKED:
+                if label and not b.ToolTip:
+                    b.ToolTip = label
+                label = ""
+            row = StackPanel()
+            row.Orientation = Orientation.Horizontal
+            icon = TextBlock()
+            icon.Text = glyph
+            icon.FontFamily = ICON_FONT
+            icon.FontSize = 13 if label else 14
+            icon.VerticalAlignment = VerticalAlignment.Center
+            words = None
+            if label:
+                words = TextBlock()
+                words.Text = label
+                words.VerticalAlignment = VerticalAlignment.Center
+                words.Margin = Thickness(0, 0, 7, 0) if after else Thickness(7, 0, 0, 0)
+            for part in ([words, icon] if after else [icon, words]):
+                if part is not None:
+                    row.Children.Add(part)
+            b.Content = row
+            self.hoverable(b, light=False)
+        if self.docked:
+            self.fold_overview()
+        for name in ("btnStartBrowse", "btnAssign", "btnBrowseClose", "btnTourNext", "btnTourBack"):
+            b = getattr(self, name, None)
+            if b is not None:
+                self.hoverable(b, light=False)
+        for name in ("txtProject", "txtTitle", "statTotal", "statOpen", "statResolved", "statFound", "txtBrowseProject",
+                     "txtTourTitle", "pnlNoFilesTitle", "pnlEmptyTitle"):
+            el = getattr(self, name, None)
+            if el is not None:
+                el.FontFamily = DISPLAY_FONT
+
+    def fold_overview(self):
+        """Docked panel: the severity bar, audit chips and changes fold away behind "Details", so the
+        issue list and the issue get the height (a docked panel is rarely tall)."""
+        box = self.gridSeverity.Parent
+        details = StackPanel()
+        for el in (self.gridSeverity, self.spSeverityKey, self.wpAudits, self.spChanged):
+            box.Children.Remove(el)
+            details.Children.Add(el)
+        toggle = text(u"Details \u25BE", 11.5, "#00A0E3", margin=(0, 8, 0, 0))
+        toggle.Cursor = Cursors.Hand
+        toggle.ToolTip = "Severity, audits and what changed since the last revision"
+        box.Children.Add(toggle)
+        box.Children.Add(details)
+
+        def show(on):
+            details.Visibility = Visibility.Visible if on else Visibility.Collapsed
+            toggle.Text = u"Hide details \u25B4" if on else u"Details \u25BE"
+            self.settings["panel_details"] = on
+            if on:
+                animate_in(details, 6, 180)
+
+        def flip(sender, args):
+            show(details.Visibility != Visibility.Visible)
+            save_settings(self.settings)
+        toggle.MouseLeftButtonUp += flip
+        show(bool(self.settings.get("panel_details")))
+
+    def list_loading(self, on):
+        """Placeholder rows in the issue list while results download."""
+        self.spLoading.Children.Clear()
+        if on:
+            self.spLoading.Children.Add(skeleton(7, 58))
+        self.spLoading.Visibility = Visibility.Visible if on else Visibility.Collapsed
+        self.lbIssues.Visibility = Visibility.Collapsed if on else Visibility.Visible
+        if on:
+            self.pnlNoFiles.Visibility = Visibility.Collapsed
+
+    def _empty_state(self, shown):
+        """What the list says when it has nothing to show, and the one thing to do next."""
+        if shown or self.spLoading.Visibility == Visibility.Visible:
+            self.pnlNoFiles.Visibility = Visibility.Collapsed
+            return
+        if not self.files:
+            glyph, title, body, button, action = (
+                u"\uE838", "No issues open yet", "Open a saved audit from BIMPulse to see its issues here.",
+                "Browse BIMPulse", lambda: self.on_browse(None, None))
+        elif self.cbReview.SelectedIndex == 0 and not any(t.review == bcf.OPEN for t in self.topics):
+            glyph, title, body, button, action = (
+                u"\uE73E", u"Nothing open \u2014 nice work", "Every issue here is resolved or ignored.",
+                "Show all issues", lambda: setattr(self.cbReview, "SelectedIndex", 1))
+        else:
+            glyph, title, body, button, action = (
+                u"\uE721", "No issues match", "Try other filters or search words.", "Clear filters",
+                lambda: self.on_clear_filters(None, None))
+        self.pnlNoFilesIcon.Text = glyph
+        self.pnlNoFilesTitle.Text = title
+        self.pnlNoFilesBody.Text = body
+        self.pnlNoFilesAction.Content = button
+        self._empty_action = action
+        if self.pnlNoFiles.Visibility != Visibility.Visible:
+            self.pnlNoFiles.Visibility = Visibility.Visible
+            animate_in(self.pnlNoFiles, 8, 220)
+
+    # ---------- command bar (Ctrl+K) ----------
+
+    def open_command(self):
+        self.show_browse(False)
+        self.pnlCommand.Visibility = Visibility.Visible
+        self.tbCommand.Text = ""
+        self.fill_command()
+        animate_in(self.bdCommand, -8, 170)
+        self.tbCommand.Focus()
+
+    def close_command(self):
+        self.pnlCommand.Visibility = Visibility.Collapsed
+
+    def command_items(self, query):
+        """[(glyph, title, detail, run)]: actions, then issues, then projects matching the words."""
+        words = [w for w in (query or "").lower().split() if w]
+
+        def hit(text):
+            return all(w in text for w in words)
+        out = []
+        for name, title, keys in COMMANDS:
+            b = getattr(self, name, None)
+            if b is None or not b.IsEnabled or not b.IsVisible:
+                continue
+            if words and not hit((title + " " + keys).lower()):
+                continue
+            key = next((k for k, n, _ in SHORTCUTS if n == name), "")
+            glyph = next((g for n, g, _ in ICONS if n == name), u"\uE8A7")
+            out.append((glyph, title, key, (lambda btn: lambda: btn.RaiseEvent(
+                System.Windows.RoutedEventArgs(Button.ClickEvent)))(b)))
+        extras = [(u"\uE7B3", "Issues for the Revit selection", "E", self.toggle_selection),
+                  (u"\uE790", "Theme: light", "", lambda: self.set_theme("light")),
+                  (u"\uE790", "Theme: dark", "", lambda: self.set_theme("dark")),
+                  (u"\uE790", "Theme: match Revit", "", lambda: self.set_theme("auto")),
+                  (u"\uE8A0", "Keyboard shortcuts", "F1", self.show_shortcuts),
+                  (u"\uE897", "Show the tour", "", self.start_tour)]
+        out += [x for x in extras if not words or hit(x[1].lower())]
+        if not words:
+            out = out[:8]
+        issues = [t for t in self.topics if words and hit(t.search_text())][:12]
+        for t in issues:
+            out.append((u"\uE7BA" if t.review == bcf.OPEN else u"\uE73E", t.title,
+                        u" \u00b7 ".join(x for x in (t.audit_name, t.consultant, t.review.title()) if x),
+                        (lambda topic: lambda: self.goto_topic(topic))(t)))
+        for p in self.projects or []:
+            name = p.get("project_name") or ""
+            if words and hit(name.lower()):
+                out.append((u"\uE838", name, "Project", (lambda proj: lambda: self.goto_project(proj))(p)))
+        return out[:30]
+
+    def fill_command(self):
+        self.tbCommandHint.Visibility = Visibility.Collapsed if self.tbCommand.Text else Visibility.Visible
+        self.lbCommand.Items.Clear()
+        for glyph, title, detail, run in self.command_items(self.tbCommand.Text):
+            g = Grid()
+            for w in (GridLength(28), GridLength(1, GridUnitType.Star), GridLength.Auto):
+                cd = ColumnDefinition()
+                cd.Width = w
+                g.ColumnDefinitions.Add(cd)
+            g.Margin = Thickness(10, 8, 10, 8)
+            icon = text(glyph, 14, "#00A0E3")
+            icon.FontFamily = ICON_FONT
+            icon.VerticalAlignment = VerticalAlignment.Center
+            g.Children.Add(icon)
+            name = text(title, 13, bold=True)
+            Grid.SetColumn(name, 1)
+            g.Children.Add(name)
+            if detail:
+                d = text(detail, 11, "#8A9BB3", mono=len(detail) <= 3, margin=(10, 0, 0, 0))
+                d.VerticalAlignment = VerticalAlignment.Center
+                d.MaxWidth = 220
+                Grid.SetColumn(d, 2)
+                g.Children.Add(d)
+            item = ListBoxItem()
+            item.Tag = run
+            item.Content = g
+            self.lbCommand.Items.Add(item)
+        if self.lbCommand.Items.Count:
+            self.lbCommand.SelectedIndex = 0
+        else:
+            empty = ListBoxItem()
+            empty.IsEnabled = False
+            empty.Content = text("Nothing matches. Try other words.", 12.5, "#8A9BB3", margin=(10, 8, 10, 8))
+            self.lbCommand.Items.Add(empty)
+
+    def on_command_key(self, sender, args):
+        n = self.lbCommand.Items.Count
+        if args.Key == Key.Escape:
+            self.close_command()
+            args.Handled = True
+        elif args.Key in (Key.Down, Key.Up) and n:
+            i = self.lbCommand.SelectedIndex + (1 if args.Key == Key.Down else -1)
+            self.lbCommand.SelectedIndex = max(0, min(n - 1, i))
+            self.lbCommand.ScrollIntoView(self.lbCommand.SelectedItem)
+            args.Handled = True
+        elif args.Key == Key.Enter:
+            self.run_command()
+            args.Handled = True
+
+    def run_command(self):
+        item = self.lbCommand.SelectedItem
+        if item is None or not callable(item.Tag):
+            return
+        self.close_command()
+        item.Tag()
+
+    def goto_topic(self, t):
+        """Shows an issue (clearing filters that hide it) and selects its elements."""
+        if t not in self.filtered():
+            self.audit_filter, self.selection = None, None
+            self.tbSearch.Text = ""
+            for cb in (self.cbConsultant, self.cbSeverity):
+                cb.SelectedIndex = 0
+            self.cbReview.SelectedIndex = 1
+        self.refresh(keep=t)
+        if t.elements:
+            self.act("select", quiet=True)
+
+    def goto_project(self, project):
+        self.show_browse(True)
+        for i in range(self.lbProjects.Items.Count):
+            if getattr(self.lbProjects.Items[i], "Tag", None) is project:
+                self.lbProjects.SelectedIndex = i
+                break
+
     # ---------- filters and keys ----------
 
     def on_filter(self, sender, args):
-        self.refresh()
+        self.refresh(animate=True)
 
     def on_search(self, sender, args):
         self.tbSearchHint.Visibility = Visibility.Collapsed if self.tbSearch.Text else Visibility.Visible
@@ -2529,6 +3323,7 @@ class Dashboard(object):
 
     def on_clear_filters(self, sender, args):
         self.audit_filter = None
+        self.win_filter = None
         self.selection = None
         self.btnSelection.Text = "For selection"
         self.btnSelection.FontWeight = FontWeights.Normal
@@ -2549,6 +3344,17 @@ class Dashboard(object):
 
     def on_key(self, sender, args):
         mods = Keyboard.Modifiers
+        if args.Key == Key.Escape:
+            args.Handled = True
+            if self.pnlCommand.Visibility == Visibility.Visible:
+                self.close_command()
+            elif self.tour_step is not None:
+                self.end_tour()
+            elif self.pnlBrowse.Visibility == Visibility.Visible:
+                self.show_browse(False)
+            elif not self.docked:
+                self.Close()
+            return
         if mods == ModifierKeys.Control and args.Key in (Key.Down, Key.Up):
             self.step(1 if args.Key == Key.Down else -1)
             args.Handled = True
@@ -2557,6 +3363,12 @@ class Dashboard(object):
                 and not isinstance(Keyboard.FocusedElement, TextBox):
             self.undo_fix()
             args.Handled = True
+            return
+        if mods == ModifierKeys.Control and args.Key == Key.K:
+            self.open_command()
+            args.Handled = True
+            return
+        if self.pnlCommand.Visibility == Visibility.Visible:
             return
         if mods == ModifierKeys.Control and args.Key == Key.F:
             self.show_browse(False)
@@ -2592,6 +3404,7 @@ class Dashboard(object):
         rows = [u"{}\t{}".format(k, what) for k, _, what in SHORTCUTS]
         rows += [u"J / K\tNext / previous issue (also Ctrl+Down / Ctrl+Up)", u"Ctrl+F\tSearch issues",
                  u"Ctrl+Z\tUndo the last fix", u"E\tIssues for the elements selected in Revit",
+                 u"Ctrl+K\tFind any issue, project or action",
                  u"Ctrl+Enter\tSend the comment", u"F1 or ?\tThis list"]
         forms.alert(u"Keyboard shortcuts (when you're not typing in a box):\n\n" + u"\n".join(rows),
                     title="BIMPulse Dashboard")
@@ -2631,7 +3444,8 @@ class DashboardWindow(forms.WPFWindow, Dashboard):
     """The Dashboard button's window."""
 
     def __init__(self):
-        forms.WPFWindow.__init__(self, themed_xaml("window.xaml", current_theme()))
+        # Esc is handled by the dashboard: it closes the command bar, tour or browser first.
+        forms.WPFWindow.__init__(self, themed_xaml("window.xaml", current_theme()), handle_esc=False)
         # Fit the screen (scaled laptop screens are smaller than the designed 1320 x 840).
         area = SystemParameters.WorkArea
         self.Width = min(self.Width, area.Width - 40)
@@ -2640,6 +3454,58 @@ class DashboardWindow(forms.WPFWindow, Dashboard):
         self.MinHeight = min(self.MinHeight, self.Height)
         self.setup(docked=False)
         self.Closed += self.on_closed
+        # The frame: our own title bar and buttons, Windows 11's rounded corners and Mica backdrop.
+        self.titleBar.Background = brush("#E6050B14")
+        self.btnWinMin.Click += lambda s, a: setattr(self, "WindowState", WindowState.Minimized)
+        self.btnWinMax.Click += lambda s, a: self.toggle_maximise()
+        self.btnWinClose.Click += lambda s, a: self.Close()
+        self.StateChanged += lambda s, a: self.on_window_state()
+        self.SourceInitialized += lambda s, a: self.dress_frame()
+        self.txtWindowTitle.FontFamily = SANS_FONT
+        # The BIMPulse mark (the blue ECG cube) on the taskbar and in Alt+Tab, not pyRevit's icon.
+        try:
+            icon = BitmapImage()
+            icon.BeginInit()
+            icon.UriSource = System.Uri(os.path.join(UI_DIR, "logo.png"))
+            icon.CacheOption = BitmapCacheOption.OnLoad
+            icon.EndInit()
+            icon.Freeze()
+            self.Icon = icon
+        except Exception:
+            debug(u"window icon: {}".format(traceback.format_exc()))
+
+    def toggle_maximise(self):
+        self.WindowState = WindowState.Normal if self.WindowState == WindowState.Maximized else WindowState.Maximized
+
+    def on_window_state(self):
+        big = self.WindowState == WindowState.Maximized
+        # A maximised borderless window overhangs the screen by its resize border: keep it on screen.
+        self.frameGrid.Margin = Thickness(7) if big else Thickness(0)
+        self.btnWinMax.Content = u"" if big else u""
+        self.btnWinMax.ToolTip = "Restore" if big else "Maximise"
+
+    def dress_frame(self):
+        """Windows 11: rounded corners, a dark or light frame, and the Mica backdrop showing faintly
+        through the title bar. Earlier Windows: a solid title bar. Never fails."""
+        try:
+            import ctypes
+            from System.Windows.Interop import HwndSource, WindowInteropHelper
+            from System.Windows.Media import Colors
+            hwnd = WindowInteropHelper(self).Handle
+            handle = ctypes.c_void_p(int(hwnd.ToInt64()))
+
+            def dwm(attribute, value):
+                v = ctypes.c_int(value)
+                return ctypes.windll.dwmapi.DwmSetWindowAttribute(handle, attribute, ctypes.byref(v), 4) == 0
+            dwm(33, 2)  # rounded corners
+            dwm(20, 1 if THEME["name"] == "dark" else 0)  # a dark frame for the dark theme
+            if System.Environment.OSVersion.Version.Build >= 22621 and dwm(38, 2):  # Mica
+                self.chrome.GlassFrameThickness = Thickness(-1)
+                HwndSource.FromHwnd(hwnd).CompositionTarget.BackgroundColor = Colors.Transparent
+                self.Background = brush("#00000000")
+                self.titleBar.Background = brush("#99050B14")
+        except Exception:
+            debug(u"window frame: {}".format(traceback.format_exc()))
 
 
 def open_window():

@@ -14,7 +14,7 @@
         <SolidColorBrush x:Key="Thumb" Color="#22344F"/>
         <SolidColorBrush x:Key="CheckLine" Color="#2A3D57"/>
         <SolidColorBrush x:Key="OnAccent" Color="#03101C"/>
-        <FontFamily x:Key="Mono">Consolas</FontFamily>
+        <FontFamily x:Key="Mono">BIMPULSE:MONO</FontFamily>
 
         <!-- Uppercase mono labels, as in the app -->
         <Style x:Key="Label" TargetType="TextBlock">
@@ -281,3 +281,67 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- Tooltips and hover cards -->
+        <Style TargetType="ToolTip">
+            <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToolTip">
+                        <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Line}" BorderThickness="1"
+                                CornerRadius="8" Padding="10,7" MaxWidth="380">
+                            <ContentPresenter TextBlock.Foreground="{DynamicResource Text}">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="TextWrapping" Value="Wrap"/>
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- The window's own minimise, maximise and close buttons -->
+        <Style x:Key="Caption" TargetType="Button">
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Foreground" Value="{DynamicResource Muted}"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource Raised}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="CaptionClose" TargetType="Button" BasedOn="{StaticResource Caption}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#C42B1C"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
