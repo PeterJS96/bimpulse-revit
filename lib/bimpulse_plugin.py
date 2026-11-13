@@ -129,7 +129,7 @@ TOUR = [
      "Set a missing or wrong value straight from here, on one issue or on every similar one, and it is logged in "
      "BIMPulse."),
     ("cardDetail", "Talk with your team",
-     "Comments and statuses are shared live with the BIMPulse Issues page. Tick 'Attach this view' to send a picture "
+     "Comments and statuses are shared live with the BIMPulse Issue Management page. Tick 'Attach this view' to send a picture "
      "and the view itself, so anyone can go straight back to it."),
     ("btnColour", "See them in context",
      "Colour every open issue in the active view by severity. 'Clear colours' puts the view back."),

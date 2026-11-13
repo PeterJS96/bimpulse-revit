@@ -1040,7 +1040,7 @@ class Dashboard(object):
         self.spThread.Children.Clear()
         self.txtThreadState.Text = "{} update{}".format(len(events), "" if len(events) == 1 else "s") if events else ""
         if not events:
-            self.spThread.Children.Add(text("No comments yet. What you send shows on the BIMPulse Issues page "
+            self.spThread.Children.Add(text("No comments yet. What you send shows on the BIMPulse Issue Management page "
                                             "straight away.", 12, "#8A9BB3", wrap=True))
             return
         for e in reversed(events):  # oldest first
@@ -1924,7 +1924,7 @@ class Dashboard(object):
             self.tbNote.Text = ""
             t.reviewed_by = (self.session.email if self.session else "") or t.reviewed_by
             self._post(t, cloud.event_payload(t, "status", status, comment),
-                       "Saved to BIMPulse: your team sees it on the Issues page.",
+                       "Saved to BIMPulse: your team sees it on the Issue Management page.",
                        snapshot=bool(self.chkSnapshot.IsChecked))
         else:
             self._save(t)

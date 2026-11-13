@@ -2,7 +2,7 @@ title: "BIMPulse\nDashboard"
 tooltip: >-
   Your BIMPulse audit issues in Revit. Sign in and open any saved audit, then select,
   zoom, isolate or show the elements in 3D, fix values in the model, and resolve or
-  comment on issues, live with your team on the BIMPulse Issues page.
+  comment on issues, live with your team on the BIMPulse Issue Management page.
 author: Whitecode Consulting
 engine:
   persistent: true  # the window is modeless: its buttons call back into this script
