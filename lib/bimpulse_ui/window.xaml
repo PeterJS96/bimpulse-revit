@@ -344,9 +344,9 @@
                                          VerticalScrollBarVisibility="Auto"/>
                                 <Grid Margin="0,6,0,0">
                                     <TextBlock x:Name="txtReviewedBy" Foreground="#5D6F88" FontSize="11.5" VerticalAlignment="Center"
-                                               TextWrapping="Wrap" Margin="0,0,210,0"/>
+                                               TextWrapping="Wrap" Margin="0,0,250,0"/>
                                     <CheckBox x:Name="chkSnapshot" Content="Attach this view" HorizontalAlignment="Right"
-                                              VerticalAlignment="Center" Margin="0,0,86,0" Visibility="Collapsed"
+                                              VerticalAlignment="Center" Margin="0,0,112,0" Visibility="Collapsed"
                                               ToolTip="Send a picture of the active Revit view and the view itself, so anyone can go straight back to it"/>
                                     <Button x:Name="btnSend" Style="{StaticResource Primary}" Content="Send" HorizontalAlignment="Right"
                                             Padding="16,5" Visibility="Collapsed" ToolTip="Send to BIMPulse (Ctrl+Enter)"/>

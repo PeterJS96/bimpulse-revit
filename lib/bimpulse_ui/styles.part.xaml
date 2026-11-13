@@ -345,3 +345,22 @@
             </Setter>
         </Style>
 
+        <!-- Due date: the Windows date picker in the dashboard's colours -->
+        <Style TargetType="DatePickerTextBox">
+            <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource Accent}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="DatePickerTextBox">
+                        <ScrollViewer x:Name="PART_ContentHost" Margin="4,0" VerticalAlignment="Center"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="DatePicker">
+            <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+            <Setter Property="Background" Value="{DynamicResource Field}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
+            <Setter Property="Padding" Value="6,5"/>
+        </Style>
+
