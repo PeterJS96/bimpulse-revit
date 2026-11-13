@@ -344,10 +344,17 @@ class Session(object):
                                            "/consult/audits/{}/verification").format(audit_id),
                          [("module", module), ("consultant", _to_bytes(consultant))])
 
-    def next_request(self):
-        """The newest "Open in Revit" asked for on the web in the last two minutes (claimed, so
-        only one Revit window gets it), or None: {audit_id, module, consultant, issue_key, viewpoint}."""
-        return self.call("GET", self._path("/issues/revit-requests/next", "/consult/revit-requests/next"))
+    def next_request(self, session_id=None):
+        """The newest "Open in Revit" asked for on the web in the last two minutes, for this
+        Dashboard (`session_id`) or any (claimed, so only one Revit gets it), or None:
+        {audit_id, module, consultant, issue_key, viewpoint, action}."""
+        return self.call("GET", self._path("/issues/revit-requests/next", "/consult/revit-requests/next"),
+                         [("session", session_id)] if session_id else None)
+
+    def check_in(self, body):
+        """Tells BIMPulse this Dashboard is open: {session_id, machine, revit_version, docked,
+        documents: [{title}]}, so "Open in Revit" on the web can pick it."""
+        return self.call("POST", self._path("/issues/revit-sessions", "/consult/revit-sessions"), body=body)
 
     def report_error(self, body):
         """Sends an error report to BIMPulse support (only when the person turned them on)."""

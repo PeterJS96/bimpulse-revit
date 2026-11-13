@@ -425,6 +425,10 @@ class Dashboard(object):
         self.requests.Interval = System.TimeSpan.FromSeconds(REQUEST_SECONDS)
         self.requests.Tick += lambda s, a: self.poll_requests()
         self.asking = False
+        # This Dashboard, so "Open in Revit" on the web can be sent to it (checked in every 3rd tick).
+        import uuid
+        self.session_id = str(uuid.uuid4())
+        self._ticks = 0
 
         self.queue = RevitQueue()
         self.queue.on_error = lambda e: self.status("Revit: {}".format(e), error=True)
@@ -2626,23 +2630,47 @@ class Dashboard(object):
     # ---------- "Open in Revit" from the web ----------
 
     def poll_requests(self):
-        if self.asking or self.session is None:
+        if self.session is None:
             return
-        if outdated():
+        if outdated():  # stops checking in too, so the website doesn't offer it
             self.requests.Stop()
             self.status("BIMPulse for Revit was updated. Restart Revit to update the docked panel"
                         if self.docked else "BIMPulse for Revit was updated. Close and reopen the Dashboard to use it.",
                         error=True)
+            return
+        self._ticks += 1
+        if self._ticks % 3 == 1:
+            self.check_in()
+        if self.asking:
             return
         self.asking = True
         session = self.session
 
         def work():
             try:
-                return session.next_request()
+                return session.next_request(self.session_id)
             finally:
                 self.asking = False
         self.quietly(work, lambda req: req and self.open_request(req))
+
+    def check_in(self):
+        """Tells BIMPulse this Dashboard is open, with the models open in this Revit (read in
+        Revit's API context, then sent in the background)."""
+        session = self.session
+
+        def job(uiapp):
+            titles = []
+            try:
+                for doc in uiapp.Application.Documents:
+                    if not doc.IsLinked and not doc.IsFamilyDocument:
+                        titles.append(doc.Title)
+            except Exception:
+                pass
+            body = plug.session_body(self.session_id, System.Environment.MachineName,
+                                     versions().get("revit_version"), self.docked, titles)
+            self.quietly(lambda: session.check_in(body))
+        self.queue.jobs.append(job)
+        self.event.Raise()
 
     def open_request(self, req):
         """Opens an issue asked for on the web: its result (downloaded if it isn't open), the

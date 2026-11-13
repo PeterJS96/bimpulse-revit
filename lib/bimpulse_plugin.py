@@ -151,6 +151,19 @@ def swap_map(old, new):
     return back
 
 
+def session_body(session_id, machine, revit_version, docked, titles):
+    """The check-in body: this Dashboard, its PC and Revit, and the open models' titles (no paths)."""
+    seen, docs = set(), []
+    for t in titles:
+        t = (t or "").strip()[:200]
+        if t and t not in seen:
+            seen.add(t)
+            docs.append({"title": t})
+    return {"session_id": session_id, "machine": (machine or "Revit")[:120] or "Revit",
+            "revit_version": (revit_version or None) and str(revit_version)[:60], "docked": bool(docked),
+            "documents": docs[:30]}
+
+
 def in_selection(topic, ids, unique_ids):
     """Whether one of the issue's elements is selected in Revit: by its unique id when the issue
     has one (safe across models), else by its element id."""
